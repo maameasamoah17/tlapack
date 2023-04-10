@@ -57,7 +57,6 @@ int laqps(matrix_t& A,
           vector_t& tau,
           vector2_t& partial_norms,
           vector2_t& exact_norms,
-          matrix_t& F,
           const workspace_opts_t<>& opts = {})
 {
     using T = type_t<matrix_t>;
@@ -78,6 +77,9 @@ int laqps(matrix_t& A,
 
     std::vector<T> auxv_;
     auto auxv = new_matrix(auxv_, nb, 1);
+
+    std::vector<T> F_;
+    auto F = new_matrix(F_, n, nb);
 
     const real_t one(1);
     const real_t zero(0);
@@ -134,7 +136,7 @@ int laqps(matrix_t& A,
         //
         //          Padding F(1:K,K) with zeros.
         //
-        for (idx_t j = 0; j < i; j++) {
+        for (idx_t j = 0; j <= i; j++) {
             F(j, i) = zero;
         }
 
@@ -159,9 +161,9 @@ int laqps(matrix_t& A,
         //              F(K+1:N,1:K)**H
         //
         // A5 := A5 - A4 F5^H
-        auto A4 = slice(A, pair{i, i + 1}, pair{0, i});
+        auto A4 = slice(A, pair{i, i + 1}, pair{0, i + 1});
         auto A5 = slice(A, pair{i, i + 1}, pair{i + 1, n});
-        auto F5 = slice(F, pair{i + 1, n}, pair{0, i});
+        auto F5 = slice(F, pair{i + 1, n}, pair{0, i + 1});
         gemm(Op::NoTrans, Op::ConjTrans, -one, A4, F5, one, A5);
 
         //
@@ -176,7 +178,7 @@ int laqps(matrix_t& A,
                 //                  the analysis in Lapack Working Note 176.
                 real_t temp, temp2;
 
-                temp = std::abs(A(i, j)) / partial_norms[j];
+                temp = tlapack::abs(A(i, j)) / partial_norms[j];
                 temp = max(zero, (one + temp) * (one - temp));
                 temp2 = partial_norms[j] / exact_norms[j];
                 temp2 = temp * (temp2 * temp2);
@@ -186,12 +188,12 @@ int laqps(matrix_t& A,
                         exact_norms[j] = partial_norms[j];
                     }
                     else {
-                        partial_norms[j] = 0;
-                        exact_norms[j] = 0;
+                        partial_norms[j] = zero;
+                        exact_norms[j] = zero;
                     }
                 }
                 else {
-                    partial_norms[j] = partial_norms[j] * std::sqrt(temp);
+                    partial_norms[j] = partial_norms[j] * sqrt(temp);
                 }
             }
         }
@@ -267,70 +269,45 @@ int laqp3(matrix_t& A,
     const idx_t n = ncols(A);
     const idx_t kk = std::min<idx_t>(m, n);
 
-    const real_t one(1);
-    const real_t zero(0);
-
-    //  // => need review: LAPACK GEQPF takes       tol3z =
-    //  sqrt(dlamch('Epsilon'))
-    //  // => so maybe tol3z = sqrt( 2 * eps ); ??????
-    const real_t eps = ulp<real_t>();
-    const real_t tol3z = sqrt(eps);
-
     // check arguments
     tlapack_check_false((idx_t)size(tau) < std::min<idx_t>(m, n));
 
     // quick return
     if (n <= 0) return 0;
 
-    // Allocates workspace
-    vectorOfBytes localworkdata;
-    Workspace work = [&]() {
-        workinfo_t workinfo;
-        geqpf_worksize(A, jpvt, tau, workinfo, opts);
-        return alloc_workspace(localworkdata, workinfo, opts.work);
-    }();
-
-    // Options to forward
-    auto&& larfOpts = workspace_opts_t<>{work};
-
     //  // => need review: have vector_of_norms as part of the workspace
     //  this will need to be removed
     std::vector<real_t> vector_of_norms(2 * n);
 
     for (idx_t j = 0; j < n; j++) {
-        vector_of_norms[j] = nrm2(slice(A, pair{0, m}, j));
+        vector_of_norms[j] = nrm2(col(A, j));
         vector_of_norms[n + j] = vector_of_norms[j];
     }
 
-    // Functor
-    Create<matrix_t> new_matrix;
-
     idx_t nb = 3;
-
-    std::vector<T> F_;
-    auto F = new_matrix(F_, n, nb);
-
-    std::vector<T> auxv_;
-    auto auxv = new_matrix(auxv_, nb, 1);
 
     for (idx_t ii = 0; ii < kk; ii += nb) {
         idx_t offset = ii;
-        // idx_t ib = std::min<idx_t>(nb, kk - ii);
+        idx_t ib = std::min<idx_t>(nb, kk - ii);
 
         auto Akk = slice(A, pair{offset, m}, pair{offset, n});
-        auto jpvtk = slice(jpvt, pair{offset, kk});
-        auto tauk = slice(tau, pair{offset, kk});
+        auto jpvtk = slice(jpvt, pair{offset, offset + ib});
+        auto tauk = slice(tau, pair{offset, offset + ib});
         auto partial_normsk = slice(vector_of_norms, pair{offset, n});
         auto exact_normsk = slice(vector_of_norms, pair{n + offset, 2 * n});
 
-        laqps(Akk, jpvtk, tauk, partial_normsk, exact_normsk, F);
+        laqps(Akk, jpvtk, tauk, partial_normsk, exact_normsk);
 
         // TODO: Swap the columns above Akk
         auto A0k = slice(A, pair{0, offset}, pair{offset, n});
-        for (idx_t j = 0; j != nb; j++) {
+        for (idx_t j = 0; j != ib; j++) {
             auto vect1 = tlapack::col(A0k, j);
             auto vect2 = tlapack::col(A0k, jpvtk[j]);
             tlapack::swap(vect1, vect2);
+        }
+
+        for (idx_t j = 0; j != ib; j++) {
+            jpvtk[j] += offset;
         }
 
         // for (idx_t i = ii; i < ii + ib; ++i) {
