@@ -101,9 +101,7 @@ int geqpf(matrix_t& A,
     const idx_t n = ncols(A);
     const idx_t k = std::min<idx_t>(m, n);
 
-    //  // => need review: LAPACK GEQPF takes       tol3z =
-    //  sqrt(dlamch('Epsilon'))
-    //  // => so maybe tol3z = sqrt( 2 * eps ); ??????
+    /// TODO: The LAPACK code uses uroundoff<real_t>(). Should we change?
     const real_t eps = ulp<real_t>();
     const real_t tol3z = sqrt(eps);
 
@@ -124,8 +122,6 @@ int geqpf(matrix_t& A,
     // Options to forward
     auto&& larfOpts = workspace_opts_t<>{work};
 
-    //  // => need review: have vector_of_norms as part of the workspace
-    //  this will need to be removed
     std::vector<real_t> vector_of_norms(2 * n);
 
     for (idx_t j = 0; j < n; j++) {
@@ -159,9 +155,7 @@ int geqpf(matrix_t& A,
         }
 
         //      Update partial column norms
-        for (idx_t j = i + 1; j < n; j++) {
-            //  // => need review: I do not think we need rzero and rone, we can
-            //  use 0 and 1 directly
+        for (idx_t j = i + 1; j < n; j++) { 
 
             const real_t rzero(0);
             if (vector_of_norms[j] != rzero) {

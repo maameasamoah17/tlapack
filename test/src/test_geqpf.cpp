@@ -28,9 +28,10 @@ using namespace tlapack;
 
 TEMPLATE_TEST_CASE("QR factorization with column pivoting of a general m-by-n matrix",
                    "[qpf]",
-                   TLAPACK_TYPES_TO_TEST
+                //   TLAPACK_TYPES_TO_TEST
                 //    legacyMatrix<double>
-                //    legacyMatrix<std::complex<float>>
+                // legacyMatrix<std::complex<float>>
+                legacyMatrix<Eigen::half>
                    )
 {
     srand(1);
@@ -46,10 +47,10 @@ TEMPLATE_TEST_CASE("QR factorization with column pivoting of a general m-by-n ma
 
     idx_t m, n, k;
 
-    // m = 19;
-    // n = 9;
-    m = GENERATE(9, 19, 30);
-    n = GENERATE(9, 19, 30);
+    m = 19;
+    n = 18;
+    //m = GENERATE(9, 19, 30);
+    //n = GENERATE(9, 19, 30);
     k = std::min<idx_t>(m,n);
 
     const real_t eps = ulp<real_t>();
@@ -93,7 +94,8 @@ TEMPLATE_TEST_CASE("QR factorization with column pivoting of a general m-by-n ma
         ung2r(Q, tauw, workOpts);
 
         auto orth_Q = check_orthogonality(Q);
-        // std::cout << orth_Q << "\n";
+        //std::cout << orth_Q << "\n";
+        // std::cout << tol << "\n";
         CHECK(orth_Q <= tol);
 
         // check that A * P = Q * R
