@@ -19,6 +19,11 @@
 
 namespace tlapack {
 
+template <typename idx_t>
+struct laqps_opts_t {
+    idx_t nb = 32;  ///< Block size
+};
+
 /** Worspace query of geqpf()
  *
  * @param[in] A m-by-n matrix.
@@ -52,13 +57,13 @@ inline constexpr void laqps_worksize(const matrix_t& A,
 }
 
 template <class matrix_t, class vector_idx, class vector_t, class vector2_t>
-int laqps(int& kb,
+int laqps(size_type<matrix_t>& kb,
           matrix_t& A,
           vector_idx& jpvt,
           vector_t& tau,
           vector2_t& current_norm_estimates,
           vector2_t& last_computed_norms,
-          const workspace_opts_t<>& opts = {})
+          const laqps_opts_t<size_type<matrix_t>>& opts = {})
 {
     using T = type_t<matrix_t>;
     using real_t = real_type<T>;
@@ -73,7 +78,7 @@ int laqps(int& kb,
     const idx_t n = ncols(A);
     const idx_t k = std::min<idx_t>(m, n);
 
-    const idx_t nb_opts = 3;
+    const idx_t nb_opts = opts.nb;
     const idx_t nb = std::min<idx_t>(nb_opts, k);
 
     std::vector<T> auxv_;
@@ -154,7 +159,7 @@ int laqps(int& kb,
         gemm(Op::NoTrans, Op::ConjTrans, -one, A4, F5, one, A5);
 
         // Update partial column norms
-        for (idx_t j = i + 1; j < n; j++) {
+        for (idx_t j = i + 1; j < n && is_difficult_column == 0; j++) {
             //  // => need review: I do not think we need rzero and rone, we
             //  can use 0 and 1 directly
 
@@ -170,8 +175,9 @@ int laqps(int& kb,
                 if (temp2 <= tol3z) {
                     is_difficult_column = 1;
                     // if (i + 1 < m) {
-                    std::cout << "f ****** i = " << i << "****** j = " << j << "**"
-                              << A(i,j) << " -- " << current_norm_estimates[j] << "\n";
+                    // std::cout << "f ****** i = " << i << "****** j = " << j
+                    //           << "**" << A(i, j) << " -- "
+                    //           << current_norm_estimates[j] << "\n";
                     // }
                     // else {
                     //     current_norm_estimates[j] = zero;
@@ -179,11 +185,22 @@ int laqps(int& kb,
                     // }
                 }
                 else {
-                    current_norm_estimates[j] =
-                        current_norm_estimates[j] * sqrt(temp);
+                    // current_norm_estimates[j] =
+                    // current_norm_estimates[j] * sqrt(temp);
                 }
             }
         }
+
+        for (idx_t j = i + 1; j < n && is_difficult_column == 0; j++) {
+            if (current_norm_estimates[j] != zero) {
+                real_t temp;
+                temp = tlapack::abs(A(i, j)) / current_norm_estimates[j];
+                temp = max(zero, (one + temp) * (one - temp));
+                current_norm_estimates[j] =
+                    current_norm_estimates[j] * sqrt(temp);
+            }
+        }
+
         //
         A(i, i) = Aii;
         //
@@ -197,42 +214,44 @@ int laqps(int& kb,
     auto tilF = slice(F, pair{kb, n}, pair{0, kb});
     gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilA);
 
-    std::cout << "Iter " << i-1 << std::endl;
-    for (idx_t j = kb; j < n; j++) {
-        std::cout << current_norm_estimates[j]
-                  << " == " << nrm2(slice(A, pair{kb, m}, j)) << std::endl;
-    }
+    // std::cout << "Iter " << i - 1 << std::endl;
+    // for (idx_t j = kb; j < n; j++) {
+    //     std::cout << current_norm_estimates[j]
+    //               << " == " << nrm2(slice(A, pair{kb, m}, j)) << std::endl;
+    // }
 
     //
     // TODO: Recomputation of difficult columns.
     //
-    for (idx_t j = kb; j < n; j++) {
-        //if (kb < m) {
-            // current_norm_estimates[j] = nrm2(slice(A, pair{kb, m}, j));
-            // last_computed_norms[j] = current_norm_estimates[j];
+    for (idx_t j = kb; j < n && is_difficult_column == 1; j++) {
+        if (current_norm_estimates[j] != zero) {
+            //                   NOTE: The following 4 lines follow from
+            //                   the analysis in Lapack Working Note 176.
+            real_t temp, temp2;
 
-            //if (current_norm_estimates[j] != zero) {
-                //                  NOTE: The following 4 lines follow from
-                //                  the analysis in Lapack Working Note 176.
-                real_t temp, temp2;
-
-                temp = tlapack::abs(A(kb-1, j)) / current_norm_estimates[j];
-                temp = max(zero, (one + temp) * (one - temp));
-                temp2 = current_norm_estimates[j] / last_computed_norms[j];
-                temp2 = temp * (temp2 * temp2);
-                if (temp2 <= tol3z) {
-                    std::cout << "r ****** i = " << kb-1 << "****** j = " << j << "**"
-                              << A(kb-1, j) << " -- " << current_norm_estimates[j] << "\n";
-                    current_norm_estimates[j] = nrm2(slice(A, pair{kb, m}, j));
-                    last_computed_norms[j] = current_norm_estimates[j];
-                }
-            //}
-        //}
-        //else {
-            //current_norm_estimates[j] = zero;
-            //last_computed_norms[j] = zero;
-        //}
+            temp = tlapack::abs(A(kb - 1, j)) / current_norm_estimates[j];
+            temp = max(zero, (one + temp) * (one - temp));
+            temp2 = current_norm_estimates[j] / last_computed_norms[j];
+            temp2 = temp * (temp2 * temp2);
+            if (temp2 <= 10*tol3z) {
+                // std::cout << "r ****** i = " << kb - 1 << "****** j = " <<
+                //j
+                //           << "**" << A(kb - 1, j) << " -- "
+                //           << current_norm_estimates[j] << "\n";
+                current_norm_estimates[j] = nrm2(slice(A, pair{kb, m}, j));
+                last_computed_norms[j] = current_norm_estimates[j];
+            }
+            else {
+                current_norm_estimates[j] =
+                    current_norm_estimates[j] * sqrt(temp);
+            }
+        }
     }
+
+    // for (idx_t j = kb; j < n && is_difficult_column == 1; j++) {
+    //     current_norm_estimates[j] = nrm2(slice(A, pair{kb, m}, j));
+    //     last_computed_norms[j] = current_norm_estimates[j];
+    // }
 
     return 0;
 }
@@ -300,12 +319,14 @@ int laqp3(matrix_t& A,
         vector_of_norms[n + j] = vector_of_norms[j];
     }
 
-    idx_t nb = 3;
-    int kb;
+    laqps_opts_t<size_type<matrix_t>> opts_laqps;
+    opts_laqps.nb = 13;
+
+    idx_t kb;
 
     for (idx_t ii = 0; ii < kk;) {
         idx_t offset = ii;
-        idx_t ib = std::min<idx_t>(nb, kk - ii);
+        idx_t ib = std::min<idx_t>(opts_laqps.nb, kk - ii);
 
         auto Akk = slice(A, pair{offset, m}, pair{offset, n});
         auto jpvtk = slice(jpvt, pair{offset, offset + ib});
@@ -313,7 +334,7 @@ int laqp3(matrix_t& A,
         auto partial_normsk = slice(vector_of_norms, pair{offset, n});
         auto exact_normsk = slice(vector_of_norms, pair{n + offset, 2 * n});
 
-        laqps(kb, Akk, jpvtk, tauk, partial_normsk, exact_normsk);
+        laqps(kb, Akk, jpvtk, tauk, partial_normsk, exact_normsk, opts_laqps);
         std::cout << "kb = " << kb << std::endl;
 
         // Swap the columns above Akk
