@@ -7,8 +7,8 @@
 // <T>LAPACK is free software: you can redistribute it and/or modify it under
 // the terms of the BSD 3-Clause license. See the accompanying LICENSE file.
 
-#ifndef TLAPACK_LAQPS_TRICK_HH
-#define TLAPACK_LAQPS_TRICK__HH
+#ifndef TLAPACK_LAQPS_TRICKX_HH
+#define TLAPACK_LAQPS_TRICKX__HH
 
 #include "tlapack/base/utils.hpp"
 #include "tlapack/blas/nrm2.hpp"
@@ -20,7 +20,7 @@
 namespace tlapack {
 
 template <typename idx_t>
-struct laqps_trick_opts_t {
+struct laqps_trickx_opts_t {
     idx_t nb = 32;  ///< Block size
 };
 
@@ -39,7 +39,7 @@ struct laqps_trick_opts_t {
  * @ingroup workspace_query
  */
 template <class matrix_t, class vector_idx, class vector_t>
-inline constexpr void laqps_trick_worksize(const matrix_t& A,
+inline constexpr void laqps_trickx_worksize(const matrix_t& A,
                                      const vector_idx& jpvt,
                                      const vector_t& tau,
                                      workinfo_t& workinfo,
@@ -57,7 +57,7 @@ inline constexpr void laqps_trick_worksize(const matrix_t& A,
 }
 
 template <class matrix_t, class vector_idx, class vector_t, class vector2_t>
-int laqps_trick(size_type<matrix_t>& kb,
+int laqps_trickx(size_type<matrix_t>& kb,
           matrix_t& A,
           vector_idx& jpvt,
           vector_t& tau,
@@ -89,6 +89,15 @@ int laqps_trick(size_type<matrix_t>& kb,
 
     std::vector<T> Gwork_;
     auto Gwork = new_matrix(Gwork_, m, 1);
+
+    idx_t xb = 2;
+    std::vector<T> Gworkx_;
+    auto Gworkx = new_matrix(Gworkx_, m, xb);
+
+    std::vector<T> Fx_;
+    auto Fx = new_matrix(Fx_, xb, nb);
+
+    std::vector<idx_t> difficult(xb);
 
     const real_t one(1);
     const real_t zero(0);
@@ -163,6 +172,7 @@ int laqps_trick(size_type<matrix_t>& kb,
         gemm(Op::NoTrans, Op::ConjTrans, -one, A4, F5, one, A5);
 
         // Update partial column norms
+        idx_t number_of_difficult = 0;
         for (idx_t j = i + 1; j < n; j++) {
             //  // => need review: I do not think we need rzero and rone, we
             //  can use 0 and 1 directly
@@ -177,6 +187,9 @@ int laqps_trick(size_type<matrix_t>& kb,
                 temp2 = current_norm_estimates[j] / last_computed_norms[j];
                 temp2 = temp * (temp2 * temp2);
                 if (temp2 <= tol3z) {
+                    difficult[number_of_difficult] = j;
+                    std::cout << "** at step i = " << i << ", column j = " << j << " is difficult\n";
+                    number_of_difficult ++ ;
                     //is_difficult_column = 1;
                     // if (i + 1 < m) {
                     // std::cout << "f ****** i = " << i << "****** j = " << j
@@ -191,23 +204,76 @@ int laqps_trick(size_type<matrix_t>& kb,
     // Apply the block reflector to the rest of the matrix:
     // (ref)     A(OFFSET+KB+1:M,KB+1:N) := A(OFFSET+KB+1:M,KB+1:N) - A(OFFSET+KB+1:M,1:KB)*F(KB+1:N,1:KB)**H.
     // (we want) A(OFFSET+**I**+1:M, **J** ) := A(OFFSET+**I**+1:M,**J**) - A(OFFSET+**I**+1:M,1:**I**)*F(**J**,1:**I**)**H.
-    auto tilA = slice(A, pair{i+1, m}, pair{j, j+1});
-    auto tilG = slice(Gwork, pair{i+1, m}, pair{0, 1});
-    lacpy( Uplo::General, tilA, tilG );
-    auto V = slice(A, pair{i+1, m}, pair{0, i+1});
-    auto tilF = slice(F, pair{j, j+1}, pair{0, i+1});
-    gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilG);
-    current_norm_estimates[j] = nrm2(slice(Gwork, pair{i+1, m}, 0));
-    last_computed_norms[j] = current_norm_estimates[j];
-
+    // auto tilA = slice(A, pair{i+1, m}, pair{j, j+1});
+    // auto tilG = slice(Gworkx, pair{i+1, m}, pair{0, 1});
+    // lacpy( Uplo::General, tilA, tilG );
+    // auto V = slice(A, pair{i+1, m}, pair{0, i+1});
+    // auto tilF = slice(F, pair{j, j+1}, pair{0, i+1});
+    // gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilG);
+    // current_norm_estimates[j] = nrm2(slice(Gworkx, pair{i+1, m}, 0));
+    // last_computed_norms[j] = current_norm_estimates[j];
 
                 }
                 else {
                     current_norm_estimates[j] =
                         current_norm_estimates[j] * sqrt(temp);
                 }
+
+if ( number_of_difficult == xb ){
+
+std::cout << "***** blocking it";
+
+for (idx_t ixb = 0; ixb < xb; ixb++) {
+    idx_t jj = difficult[ixb];
+std::cout << "  ** jj = " << jj;
+    auto tilA = slice(A, pair{i+1, m}, pair{jj, jj+1});
+    auto tilG = slice(Gworkx, pair{i+1, m}, pair{0, 1});
+    lacpy( Uplo::General, tilA, tilG );
+    auto V = slice(A, pair{i+1, m}, pair{0, i+1});
+    auto tilF = slice(F, pair{jj, jj+1}, pair{0, i+1});
+    gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilG);
+    current_norm_estimates[jj] = nrm2(slice(Gworkx, pair{i+1, m}, 0));
+    last_computed_norms[jj] = current_norm_estimates[jj];
+}
+std::cout << "\n";
+                    number_of_difficult = 0;
+} 
+
             }
         }
+
+if ( number_of_difficult > 0 ){ std::cout << "^^^^ clean up activated "; }
+
+for (idx_t ixb = 0; ixb < number_of_difficult; ixb++) {
+    idx_t jj = difficult[ixb];
+    std::cout << "  ** jj = " << jj;
+    auto tilA = slice(A, pair{i+1, m}, pair{jj, jj+1});
+    auto tilG = slice(Gworkx, pair{i+1, m}, pair{ixb, ixb+1});
+    lacpy( Uplo::General, tilA, tilG );
+    auto tilF = slice(F, pair{jj, jj+1}, pair{0, i+1});
+    auto tilFx = slice(Fx, pair{ixb, ixb+1}, pair{0, i+1});
+    lacpy( Uplo::General, tilF, tilFx );
+}
+for (idx_t ixb = 0; ixb < number_of_difficult; ixb++) {
+    //idx_t jj = difficult[ixb];    
+    //auto V = slice(A, pair{i+1, m}, pair{0, i+1});
+    //auto tilF = slice(F, pair{jj, jj+1}, pair{0, i+1});
+    //auto tilG = slice(Gworkx, pair{i+1, m}, pair{ixb, ixb+1});
+    //gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilG);
+}
+
+auto V = slice(A, pair{i+1, m}, pair{0, i+1});
+auto tilG = slice(Gworkx, pair{i+1, m}, pair{0, number_of_difficult});
+auto tilF = slice(Fx, pair{0, number_of_difficult}, pair{0, i+1});
+gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilG);
+
+for (idx_t ixb = 0; ixb < number_of_difficult; ixb++) {
+    idx_t jj = difficult[ixb];
+    current_norm_estimates[jj] = nrm2(slice(Gworkx, pair{i+1, m}, ixb));
+    last_computed_norms[jj] = current_norm_estimates[jj];
+}
+
+if ( number_of_difficult > 0 ){ std::cout << "\n"; }
 
 
         //
@@ -262,7 +328,7 @@ int laqps_trick(size_type<matrix_t>& kb,
  * @ingroup computational
  */
 template <class matrix_t, class vector_idx, class vector_t>
-int laqp3_trick(matrix_t& A,
+int laqp3_trickx(matrix_t& A,
           vector_idx& jpvt,
           vector_t& tau,
           const workspace_opts_t<>& opts = {})
@@ -305,7 +371,7 @@ int laqp3_trick(matrix_t& A,
         auto partial_normsk = slice(vector_of_norms, pair{offset, n});
         auto exact_normsk = slice(vector_of_norms, pair{n + offset, 2 * n});
 
-        laqps_trick(kb, Akk, jpvtk, tauk, partial_normsk, exact_normsk, opts_laqps);
+        laqps_trickx(kb, Akk, jpvtk, tauk, partial_normsk, exact_normsk, opts_laqps);
         std::cout << "kb = " << kb << std::endl;
 
         // Swap the columns above Akk
@@ -326,4 +392,4 @@ int laqp3_trick(matrix_t& A,
 
 }  // namespace tlapack
 
-#endif  // TLAPACK_LAQPS_TRICK_HH
+#endif  // TLAPACK_LAQPS_TRICKX_HH
