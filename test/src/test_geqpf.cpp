@@ -50,7 +50,7 @@ TEMPLATE_TEST_CASE("QR factorization with column pivoting of a general m-by-n ma
     idx_t m, n, k;
 
     m = 100;
-    n = 100;
+    n = 200;
     //m = GENERATE(9, 19, 30);
     //n = GENERATE(9, 19, 30);
     k = std::min<idx_t>(m,n);
