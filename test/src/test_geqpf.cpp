@@ -24,6 +24,7 @@
 #include <tlapack/lapack/laqps.hpp>
 #include <tlapack/lapack/laqps_trick.hpp>
 #include <tlapack/lapack/laqps_trickx.hpp>
+#include <tlapack/lapack/laqps_trickxx.hpp>
 #include <tlapack/lapack/ung2r.hpp>
 
 using namespace tlapack;
@@ -50,7 +51,7 @@ TEMPLATE_TEST_CASE("QR factorization with column pivoting of a general m-by-n ma
     idx_t m, n, k;
 
     m = 100;
-    n = 200;
+    n = 100;
     //m = GENERATE(9, 19, 30);
     //n = GENERATE(9, 19, 30);
     k = std::min<idx_t>(m,n);
@@ -89,7 +90,8 @@ TEMPLATE_TEST_CASE("QR factorization with column pivoting of a general m-by-n ma
     {
         // geqpf(A, jpvt, tauw, workOpts);
         // laqp3_trick( A, jpvt, tauw, workOpts );
-        laqp3_trickx( A, jpvt, tauw, workOpts );
+        // laqp3_trickx( A, jpvt, tauw, workOpts );
+        laqp3_trickxx( A, jpvt, tauw, workOpts );
 
         auto Q0 = slice(Q, range(0, m), range(0, k));
         lacpy(Uplo::General, slice(A, range(0, m), range(0, k)), Q0);
