@@ -65,7 +65,7 @@ int laqps_trickx(
           vector_t& tau,
           vector2_t& current_norm_estimates,
           vector2_t& last_computed_norms,
-          const laqps_opts_t<size_type<matrix_t>>& opts = {})
+          const laqps_trickx_opts_t<size_type<matrix_t>>& opts = {})
 {
     using T = type_t<matrix_t>;
     using real_t = real_type<T>;
@@ -334,68 +334,68 @@ if ( number_of_difficult > 0 ){ std::cout << "\n"; }
  *
  * @ingroup computational
  */
-template <class matrix_t, class vector_idx, class vector_t>
-int laqp3_trickx(matrix_t& A,
-          vector_idx& jpvt,
-          vector_t& tau,
-          const workspace_opts_t<>& opts = {})
-{
-    using T = type_t<matrix_t>;
-    using real_t = real_type<T>;
-    using idx_t = size_type<matrix_t>;
-    using pair = pair<idx_t, idx_t>;
+// template <class matrix_t, class vector_idx, class vector_t>
+// int laqp3_trickx(matrix_t& A,
+//           vector_idx& jpvt,
+//           vector_t& tau,
+//           const workspace_opts_t<>& opts = {})
+// {
+//     using T = type_t<matrix_t>;
+//     using real_t = real_type<T>;
+//     using idx_t = size_type<matrix_t>;
+//     using pair = pair<idx_t, idx_t>;
 
-    // constants
-    const idx_t m = nrows(A);
-    const idx_t n = ncols(A);
-    const idx_t kk = std::min<idx_t>(m, n);
+//     // constants
+//     const idx_t m = nrows(A);
+//     const idx_t n = ncols(A);
+//     const idx_t kk = std::min<idx_t>(m, n);
 
-    // check arguments
-    tlapack_check_false((idx_t)size(tau) < std::min<idx_t>(m, n));
+//     // check arguments
+//     tlapack_check_false((idx_t)size(tau) < std::min<idx_t>(m, n));
 
-    // quick return
-    if (n <= 0) return 0;
+//     // quick return
+//     if (n <= 0) return 0;
 
-    std::vector<real_t> vector_of_norms(2 * n);
+//     std::vector<real_t> vector_of_norms(2 * n);
 
-    for (idx_t j = 0; j < n; j++) {
-        vector_of_norms[j] = nrm2(col(A, j));
-        vector_of_norms[n + j] = vector_of_norms[j];
-    }
+//     for (idx_t j = 0; j < n; j++) {
+//         vector_of_norms[j] = nrm2(col(A, j));
+//         vector_of_norms[n + j] = vector_of_norms[j];
+//     }
 
-    laqps_opts_t<size_type<matrix_t>> opts_laqps;
-    opts_laqps.nb = 13;
+//     laqps_opts_t<size_type<matrix_t>> opts_laqps;
+//     opts_laqps.nb = 13;
 
-    idx_t kb;
+//     idx_t kb;
 
-    for (idx_t ii = 0; ii < kk;) {
-        idx_t offset = ii;
-        idx_t ib = std::min<idx_t>(opts_laqps.nb, kk - ii);
+//     for (idx_t ii = 0; ii < kk;) {
+//         idx_t offset = ii;
+//         idx_t ib = std::min<idx_t>(opts_laqps.nb, kk - ii);
 
-        auto Akk = slice(A, pair{offset, m}, pair{offset, n});
-        auto jpvtk = slice(jpvt, pair{offset, offset + ib});
-        auto tauk = slice(tau, pair{offset, offset + ib});
-        auto partial_normsk = slice(vector_of_norms, pair{offset, n});
-        auto exact_normsk = slice(vector_of_norms, pair{n + offset, 2 * n});
+//         auto Akk = slice(A, pair{offset, m}, pair{offset, n});
+//         auto jpvtk = slice(jpvt, pair{offset, offset + ib});
+//         auto tauk = slice(tau, pair{offset, offset + ib});
+//         auto partial_normsk = slice(vector_of_norms, pair{offset, n});
+//         auto exact_normsk = slice(vector_of_norms, pair{n + offset, 2 * n});
 
-        laqps_trickx(offset, kb, Akk, jpvtk, tauk, partial_normsk, exact_normsk, opts_laqps);
-        std::cout << "kb = " << kb << std::endl;
+//         laqps_trickx(offset, kb, Akk, jpvtk, tauk, partial_normsk, exact_normsk, opts_laqps);
+//         std::cout << "kb = " << kb << std::endl;
 
-        // Swap the columns above Akk
-        auto A0k = slice(A, pair{0, offset}, pair{offset, n});
-        for (idx_t j = 0; j != kb; j++) {
-            auto vect1 = tlapack::col(A0k, j);
-            auto vect2 = tlapack::col(A0k, jpvtk[j]);
-            tlapack::swap(vect1, vect2);
-        }
+//         // Swap the columns above Akk
+//         auto A0k = slice(A, pair{0, offset}, pair{offset, n});
+//         for (idx_t j = 0; j != kb; j++) {
+//             auto vect1 = tlapack::col(A0k, j);
+//             auto vect2 = tlapack::col(A0k, jpvtk[j]);
+//             tlapack::swap(vect1, vect2);
+//         }
 
-        for (idx_t j = 0; j != kb; j++) {
-            jpvtk[j] += offset;
-        }
-        ii += kb;
-    }
-    return 0;
-}
+//         for (idx_t j = 0; j != kb; j++) {
+//             jpvtk[j] += offset;
+//         }
+//         ii += kb;
+//     }
+//     return 0;
+// }
 
 }  // namespace tlapack
 
