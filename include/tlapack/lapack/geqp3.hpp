@@ -11,13 +11,14 @@
 #define TLAPACK_GEQP3_HH
 
 #include "tlapack/base/utils.hpp"
+#include "tlapack/lapack/laqps_full.hpp"
 #include "tlapack/lapack/laqps_trick.hpp"
 #include "tlapack/lapack/laqps_trickx.hpp"
 #include "tlapack/lapack/laqps_trickxx.hpp"
 
 namespace tlapack {
 
-enum class LAqpsVariant : char { Trick, TrickX, TrickXX };
+enum class LAqpsVariant : char { Trick, TrickX, TrickXX, full_opts };
 
 /**
  * Options struct for geqp3
@@ -139,15 +140,19 @@ int geqp3(matrix_t& A,
 
         if (opts.variant == LAqpsVariant::Trick) {
             laqps_trick(ib, Akk, jpvtk, tauk, partial_normsk, exact_normsk,
-                        laqps_trick_opts_t<size_type<matrix_t>>{opts.nb});
+                        laqps_trick_opts_t<idx_t>{opts.nb});
         }
         else if (opts.variant == LAqpsVariant::TrickX) {
             laqps_trickx(i, ib, Akk, jpvtk, tauk, partial_normsk, exact_normsk,
-                         laqps_trickx_opts_t<size_type<matrix_t>>{opts.nb});
+                         laqps_trickx_opts_t<idx_t>{opts.nb});
         }
         else if (opts.variant == LAqpsVariant::TrickXX) {
             laqps_trickxx(i, ib, Akk, jpvtk, tauk, partial_normsk, exact_normsk,
-                          laqps_trickxx_opts_t<size_type<matrix_t>>{opts.nb});
+                          laqps_trickxx_opts_t<idx_t>{opts.nb});
+        }
+        else if (opts.variant == LAqpsVariant::full_opts) {
+            laqps_full(i, ib, Akk, jpvtk, tauk, partial_normsk, exact_normsk,
+                       laqps_full_opts_t<idx_t, real_t>{opts.nb,1,real_t(1),true});
         }
 
         // Swap the columns above Akk

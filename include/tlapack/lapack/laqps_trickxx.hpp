@@ -205,8 +205,8 @@ int laqps_trickxx(size_type<matrix_t>& offset,  // will need to be removed,
             }
         }
 
-        real_t max_trusted_current_estimate;
-        max_trusted_current_estimate = zero;
+        // Find the max value for trusted current estimate
+        real_t max_trusted_current_estimate = zero;
         for (idx_t j = i + 1; j < n; j++) {
             if ((trusted[j]) &&
                 (current_norm_estimates[j] > max_trusted_current_estimate))
