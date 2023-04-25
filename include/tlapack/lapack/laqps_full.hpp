@@ -23,8 +23,7 @@ namespace tlapack {
 
 template <class idx_t, class real_t>
 struct laqps_full_opts_t {
-    idx_t nb = 32;           ///< Block size
-    idx_t xb = 1;            ///< block size for the buffer in the norm updates
+    idx_t xb = 11;  ///< Block size for norm recomputation inside the panel
     real_t tol = real_t(1);  ///< Tolerance for finding not trusted columns
                              ///< after the projection occurs
     bool exit_when_find_first_need_to_be_recomputed = true;
@@ -58,7 +57,8 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
     const idx_t m = nrows(A);
     const idx_t n = ncols(A);
     const idx_t k = std::min<idx_t>(m, n);
-    const idx_t nb = std::min<idx_t>(opts.nb, k);
+    const idx_t nb = std::min<idx_t>(kb, k);
+    const idx_t xb = std::min<idx_t>(opts.xb, n);
 
     std::vector<T> auxv_;
     auto auxv = new_matrix(auxv_, nb, 1);
@@ -69,7 +69,6 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
     std::vector<T> Gwork_;
     auto Gwork = new_matrix(Gwork_, m, 1);
 
-    idx_t xb = 10;
     std::vector<T> Gworkx_;
     auto Ax = new_matrix(Gworkx_, m, xb);
 
@@ -89,7 +88,9 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
         need_to_be_recomputed[j] = false;
 
     idx_t i;
-    for (i = 0; i < nb; ++i) {
+    idx_t number_of_recompute = 0;
+
+    for (i = 0; i < nb && number_of_recompute == 0; ++i) {
         // Determine ith pivot column and swap if necessary
         jpvt[i] = i;
         for (idx_t j = i + 1; j < n; j++) {
@@ -154,6 +155,8 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
 
         // trusted / non-trusted
         for (idx_t j = i + 1; j < n; j++) {
+            std::cout << "Current norm of column " << j << ": "
+                      << current_norm_estimates[j] << std::endl;
             if (current_norm_estimates[j] != zero) {
                 //                  NOTE: The following 4 lines follow from
                 //                  the analysis in Lapack Working Note 176.
@@ -164,17 +167,16 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
                     temp = max(zero, (one + temp) * (one - temp));
                     temp2 = current_norm_estimates[j] / last_computed_norms[j];
                     temp2 = temp * (temp2 * temp2);
-
-                    if (temp2 <= tol3z) {
+                    trusted[j] = (temp2 > tol3z);
+                    if (!trusted[j]) {
                         std::cout << "** at step i = " << offset + i
                                   << ", column j = " << offset + j
                                   << " is not trusted\n";
-                        trusted[j] = false;
                     }
-                    // else {
-                    //     current_norm_estimates[j] =
-                    //         current_norm_estimates[j] * sqrt(temp);
-                    // }
+                    else {
+                        current_norm_estimates[j] =
+                            current_norm_estimates[j] * sqrt(temp);
+                    }
                 }
             }
         }
@@ -187,8 +189,10 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
                 max_trusted_current_estimate = current_norm_estimates[j];
         }
 
+        std::cout << "Max trusted at iter " << i << ": "
+                  << max_trusted_current_estimate << std::endl;
+
         // change diffi
-        idx_t number_of_recompute = 0;
         for (idx_t j = i + 1; j < n; j++) {
             if (current_norm_estimates[j] != zero) {
                 // if (!trusted[j] &&
@@ -198,64 +202,74 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
                 //               << ", column j = " << offset + j
                 //               << " is recomputed\n";
                 //     number_of_recompute++;
-                if (!trusted[j]) {
+                // if (!trusted[j]){
+                if (!trusted[j] && ((0 * max_trusted_current_estimate) <
+                                    current_norm_estimates[j])) {
                     need_to_be_recomputed[j] = true;
                     std::cout << "** at step i = " << offset + i
                               << ", column j = " << offset + j
                               << " is to be recomputed\n";
                     number_of_recompute++;
                 }
-                else {
-                    real_t temp;
+                // else {
+                //     real_t temp;
 
-                    temp = tlapack::abs(A(i, j)) / current_norm_estimates[j];
-                    temp = max(zero, (one + temp) * (one - temp));
+                //     temp = tlapack::abs(A(i, j)) / current_norm_estimates[j];
+                //     temp = max(zero, (one + temp) * (one - temp));
 
-                    current_norm_estimates[j] =
-                        current_norm_estimates[j] * sqrt(temp);
-                }
+                //     current_norm_estimates[j] =
+                //         current_norm_estimates[j] * sqrt(temp);
+                // }
             }
         }
 
-        idx_t i_number_of_recompute = 0;
-        for (idx_t j = i + 1; j < n; j++) {
-            if (need_to_be_recomputed[j]) {
-                location_recompute[i_number_of_recompute] = j;
-                i_number_of_recompute++;
-            }
-            if ((i_number_of_recompute == xb) ||
-                ((i_number_of_recompute > 0) && (j == n - 1))) {
-                for (idx_t ixb = 0; ixb < i_number_of_recompute; ixb++) {
-                    idx_t jj = location_recompute[ixb];
-                    std::cout << "** at step i = " << offset + i
-                              << ", column j = " << offset + jj
-                              << " is to ** recomputed\n";
-                    auto tilA = slice(A, pair{i + 1, m}, pair{jj, jj + 1});
-                    auto tilAx = slice(Ax, pair{i + 1, m}, pair{ixb, ixb + 1});
-                    lacpy(Uplo::General, tilA, tilAx);
-                    auto tilF = slice(F, pair{jj, jj + 1}, pair{0, i + 1});
-                    auto tilFx = slice(Fx, pair{ixb, ixb + 1}, pair{0, i + 1});
-                    lacpy(Uplo::General, tilF, tilFx);
+        //      make decision on whoi will be ecomputed
+
+        if ((number_of_recompute > 0) &&
+            (!opts.exit_when_find_first_need_to_be_recomputed)) {
+            idx_t i_number_of_recompute = 0;
+            for (idx_t j = i + 1; j < n; j++) {
+                if (need_to_be_recomputed[j]) {
+                    location_recompute[i_number_of_recompute] = j;
+                    i_number_of_recompute++;
                 }
+                if ((i_number_of_recompute == xb) ||
+                    ((i_number_of_recompute > 0) && (j == n - 1))) {
+                    for (idx_t ixb = 0; ixb < i_number_of_recompute; ixb++) {
+                        idx_t jj = location_recompute[ixb];
+                        std::cout << "** at step i = " << offset + i
+                                  << ", column j = " << offset + jj
+                                  << " is ** ** recomputed\n";
+                        auto tilA = slice(A, pair{i + 1, m}, pair{jj, jj + 1});
+                        auto tilAx =
+                            slice(Ax, pair{i + 1, m}, pair{ixb, ixb + 1});
+                        lacpy(Uplo::General, tilA, tilAx);
+                        auto tilF = slice(F, pair{jj, jj + 1}, pair{0, i + 1});
+                        auto tilFx =
+                            slice(Fx, pair{ixb, ixb + 1}, pair{0, i + 1});
+                        lacpy(Uplo::General, tilF, tilFx);
+                    }
 
-                auto V = slice(A, pair{i + 1, m}, pair{0, i + 1});
-                auto tilAx =
-                    slice(Ax, pair{i + 1, m}, pair{0, i_number_of_recompute});
-                auto tilF =
-                    slice(Fx, pair{0, i_number_of_recompute}, pair{0, i + 1});
-                gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilAx);
+                    auto V = slice(A, pair{i + 1, m}, pair{0, i + 1});
+                    auto tilAx = slice(Ax, pair{i + 1, m},
+                                       pair{0, i_number_of_recompute});
+                    auto tilF = slice(Fx, pair{0, i_number_of_recompute},
+                                      pair{0, i + 1});
+                    gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilAx);
 
-                for (idx_t ixb = 0; ixb < i_number_of_recompute; ixb++) {
-                    idx_t jj = location_recompute[ixb];
-                    current_norm_estimates[jj] =
-                        nrm2(slice(Ax, pair{i + 1, m}, ixb));
-                    last_computed_norms[jj] = current_norm_estimates[jj];
-                    trusted[jj] = true;
-                    need_to_be_recomputed[jj] = false;
+                    for (idx_t ixb = 0; ixb < i_number_of_recompute; ixb++) {
+                        idx_t jj = location_recompute[ixb];
+                        current_norm_estimates[jj] =
+                            nrm2(slice(Ax, pair{i + 1, m}, ixb));
+                        last_computed_norms[jj] = current_norm_estimates[jj];
+                        trusted[jj] = true;
+                        need_to_be_recomputed[jj] = false;
+                    }
+
+                    i_number_of_recompute = 0;
                 }
-
-                i_number_of_recompute = 0;
             }
+            number_of_recompute = 0;
         }
 
         // Put A(i,i) back to its place
@@ -272,18 +286,10 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
     gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilA);
 
     if (opts.exit_when_find_first_need_to_be_recomputed &&
-        location_recompute[0] > 0) {
+        number_of_recompute > 0) {
         for (idx_t j = kb; j < n; j++) {
             if (current_norm_estimates[j] != zero) {
-                //                   NOTE: The following 4 lines follow from
-                //                   the analysis in Lapack Working Note 176.
-                real_t temp, temp2;
-
-                temp = tlapack::abs(A(kb - 1, j)) / current_norm_estimates[j];
-                temp = max(zero, (one + temp) * (one - temp));
-                temp2 = current_norm_estimates[j] / last_computed_norms[j];
-                temp2 = temp * (temp2 * temp2);
-                if (temp2 <= opts.tol * tol3z) {
+                if (need_to_be_recomputed[j]) {
                     // std::cout << "r ****** i = " << kb - 1 << "****** j = "
                     // <<
                     // j
@@ -293,8 +299,6 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
                     last_computed_norms[j] = current_norm_estimates[j];
                 }
                 else {
-                    current_norm_estimates[j] =
-                        current_norm_estimates[j] * sqrt(temp);
                 }
             }
         }

@@ -28,7 +28,8 @@ struct geqp3_opts_t : public workspace_opts_t<> {
     inline constexpr geqp3_opts_t(const workspace_opts_t<>& opts = {})
         : workspace_opts_t<>(opts){};
 
-    idx_t nb = 32;                                 ///< Block size
+    idx_t nb = 32;                                 ///< Panel default size
+    idx_t xb = 13;                                 ///< Block size for norm recomputation inside the panel
     LAqpsVariant variant = LAqpsVariant::TrickXX;  ///< Variant for LAQPS
 };
 
@@ -152,8 +153,10 @@ int geqp3(matrix_t& A,
         }
         else if (opts.variant == LAqpsVariant::full_opts) {
             laqps_full(i, ib, Akk, jpvtk, tauk, partial_normsk, exact_normsk,
-                       laqps_full_opts_t<idx_t, real_t>{opts.nb,3,real_t(10),false});
+                       laqps_full_opts_t<idx_t, real_t>{opts.xb,real_t(10),false});
         }
+
+        std::cout << "kb = " << ib << std::endl;
 
         // Swap the columns above Akk
         auto A0k = slice(A, pair{0, i}, pair{i, n});

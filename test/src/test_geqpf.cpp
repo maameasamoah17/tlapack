@@ -46,17 +46,24 @@ TEMPLATE_TEST_CASE(
     // Functor
     Create<matrix_t> new_matrix;
 
-    idx_t m, n, k, nb;
+    idx_t m, n, k, nb, xb;
 
     m = 100;
     n = 100;
-    nb = 13;
+    nb = 200;
+    xb = 100;
     // const LAqpsVariant var = GENERATE(LAqpsVariant::Trick, LAqpsVariant::TrickX,
     //                                   LAqpsVariant::TrickXX, LAqpsVariant::full_opts);
-    const LAqpsVariant var = GENERATE(LAqpsVariant::full_opts);
-    // m = GENERATE(9, 19, 30);
-    // n = GENERATE(9, 19, 30);
+    // const LAqpsVariant var = GENERATE(LAqpsVariant::full_opts);
+    const LAqpsVariant var = LAqpsVariant::full_opts;
+    // m = GENERATE(30, 100);
+    // n = GENERATE( 9, 31, 100 );
+    // nb = GENERATE(1, 9, 19, 200);
+    // xb = GENERATE(1, 4, 100);
     k = std::min<idx_t>(m, n);
+
+    INFO("nb = " << nb);
+    INFO("xb = " << xb);
 
     const real_t eps = ulp<real_t>();
     const real_t tol = real_t(2 * std::max<idx_t>(m, n)) * eps;
@@ -74,6 +81,7 @@ TEMPLATE_TEST_CASE(
     // Options:
     geqp3_opts_t<size_type<matrix_t>> workOpts;
     workOpts.nb = nb;
+    workOpts.xb = xb;
     workOpts.variant = var;
 
     for (idx_t j = 0; j < n; ++j)
@@ -141,9 +149,9 @@ TEMPLATE_TEST_CASE(
                                         (tlapack::abs(R0(i, i)) * (1 + tol) >=
                                          tlapack::abs(R0(i + 1, i + 1)));
         }
-        for (idx_t i = 0; i < k; ++i) {
-            UNSCOPED_INFO(tlapack::abs(R0(i, i)));
-        }
+        // for (idx_t i = 0; i < k; ++i) {
+        //     UNSCOPED_INFO(tlapack::abs(R0(i, i)));
+        // }
         // std::cout << diagonal_is_nonincreasing << "\n";
         CHECK(diagonal_is_nonincreasing);
 
