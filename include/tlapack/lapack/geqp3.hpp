@@ -152,7 +152,7 @@ int geqp3(matrix_t& A,
         }
         else if (opts.variant == LAqpsVariant::full_opts) {
             laqps_full(i, ib, Akk, jpvtk, tauk, partial_normsk, exact_normsk,
-                       laqps_full_opts_t<idx_t, real_t>{opts.nb,1,real_t(1),true});
+                       laqps_full_opts_t<idx_t, real_t>{opts.nb,3,real_t(10),false});
         }
 
         // Swap the columns above Akk

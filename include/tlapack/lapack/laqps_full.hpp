@@ -27,7 +27,7 @@ struct laqps_full_opts_t {
     idx_t xb = 1;            ///< block size for the buffer in the norm updates
     real_t tol = real_t(1);  ///< Tolerance for finding not trusted columns
                              ///< after the projection occurs
-    bool exit_when_find_first_non_trusted = true;
+    bool exit_when_find_first_need_to_be_recomputed = true;
 };
 
 template <class matrix_t, class vector_idx, class vector_t, class vector2_t>
@@ -76,12 +76,17 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
     std::vector<T> Fx_;
     auto Fx = new_matrix(Fx_, xb, nb);
 
-    std::vector<idx_t> difficult(xb);
+    std::vector<idx_t> location_recompute(xb);
     std::vector<bool> trusted(n);
+    std::vector<bool> need_to_be_recomputed(n);
 
     // Initializing vector trusted
     for (idx_t j = 0; j < n; ++j)
         trusted[j] = true;
+
+    // Initializing vector trusted
+    for (idx_t j = 0; j < n; ++j)
+        need_to_be_recomputed[j] = false;
 
     idx_t i;
     for (i = 0; i < nb; ++i) {
@@ -147,8 +152,7 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
         auto F5 = slice(F, pair{i + 1, n}, pair{0, i + 1});
         gemm(Op::NoTrans, Op::ConjTrans, -one, A4, F5, one, A5);
 
-        // Update partial column norms
-        idx_t number_of_difficult = 0;
+        // trusted / non-trusted
         for (idx_t j = i + 1; j < n; j++) {
             if (current_norm_estimates[j] != zero) {
                 //                  NOTE: The following 4 lines follow from
@@ -160,148 +164,102 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
                     temp = max(zero, (one + temp) * (one - temp));
                     temp2 = current_norm_estimates[j] / last_computed_norms[j];
                     temp2 = temp * (temp2 * temp2);
-                    if (opts.exit_when_find_first_non_trusted) {
-                        if (temp2 <= tol3z) {
-                            trusted[j] = false;
-                            difficult[number_of_difficult] = j;
-                            break;
-                        }
-                    }
-                    else {
-                        if (temp2 <= tol3z) {
-                            std::cout << "** at step i = " << offset + i
-                                      << ", column j = " << offset + j
-                                      << " is not trusted\n";
-                            trusted[j] = false;
-                        }
-                        else {
-                            current_norm_estimates[j] =
-                                current_norm_estimates[j] * sqrt(temp);
-                        }
-                    }
-                }
-            }
-        }
 
-        if (opts.exit_when_find_first_non_trusted) {
-            if (number_of_difficult > 0) {
-                // If no norms need to be recomputed
-                for (idx_t j = i + 1; j < n; j++) {
-                    if (current_norm_estimates[j] != zero) {
-                        real_t temp;
-                        temp =
-                            tlapack::abs(A(i, j)) / current_norm_estimates[j];
-                        temp = max(zero, (one + temp) * (one - temp));
-                        current_norm_estimates[j] =
-                            current_norm_estimates[j] * sqrt(temp);
-                    }
-                }
-            }
-        }
-        else {
-            real_t max_trusted_current_estimate;
-            max_trusted_current_estimate = zero;
-            for (idx_t j = i + 1; j < n; j++) {
-                if ((trusted[j]) &&
-                    (current_norm_estimates[j] > max_trusted_current_estimate))
-                    max_trusted_current_estimate = current_norm_estimates[j];
-            }
-
-            for (idx_t j = i + 1; j < n; j++) {
-                if (current_norm_estimates[j] != zero) {
-                    if (!trusted[j] && max_trusted_current_estimate <
-                                           current_norm_estimates[j]) {
-                        difficult[number_of_difficult] = j;
+                    if (temp2 <= tol3z) {
                         std::cout << "** at step i = " << offset + i
                                   << ", column j = " << offset + j
-                                  << " is recomputed\n";
-                        number_of_difficult++;
+                                  << " is not trusted\n";
+                        trusted[j] = false;
                     }
-                    else {
-                    }
-                }
-
-                if (number_of_difficult == xb) {
-                    if (number_of_difficult > 0) {
-                        std::cout << "^^^^ blocking it ";
-                    }
-
-                    for (idx_t ixb = 0; ixb < number_of_difficult; ixb++) {
-                        idx_t jj = difficult[ixb];
-                        std::cout << "  ** jj = " << offset + jj;
-                        auto tilA = slice(A, pair{i + 1, m}, pair{jj, jj + 1});
-                        auto tilAx =
-                            slice(Ax, pair{i + 1, m}, pair{ixb, ixb + 1});
-                        lacpy(Uplo::General, tilA, tilAx);
-                        auto tilF = slice(F, pair{jj, jj + 1}, pair{0, i + 1});
-                        auto tilFx =
-                            slice(Fx, pair{ixb, ixb + 1}, pair{0, i + 1});
-                        lacpy(Uplo::General, tilF, tilFx);
-                    }
-
-                    auto V = slice(A, pair{i + 1, m}, pair{0, i + 1});
-                    auto tilAx =
-                        slice(Ax, pair{i + 1, m}, pair{0, number_of_difficult});
-                    auto tilF =
-                        slice(Fx, pair{0, number_of_difficult}, pair{0, i + 1});
-                    gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilAx);
-
-                    for (idx_t ixb = 0; ixb < number_of_difficult; ixb++) {
-                        idx_t jj = difficult[ixb];
-                        current_norm_estimates[jj] =
-                            nrm2(slice(Ax, pair{i + 1, m}, ixb));
-                        last_computed_norms[jj] = current_norm_estimates[jj];
-                        trusted[jj] = true;
-                    }
-
-                    if (number_of_difficult > 0) {
-                        std::cout << "\n";
-                    }
-
-                    number_of_difficult = 0;
+                    // else {
+                    //     current_norm_estimates[j] =
+                    //         current_norm_estimates[j] * sqrt(temp);
+                    // }
                 }
             }
+        }
 
-            if (number_of_difficult > 0) {
-                std::cout << "^^^^ clean up activated ";
+        // find the max trusted column norm
+        real_t max_trusted_current_estimate = zero;
+        for (idx_t j = i + 1; j < n; j++) {
+            if ((trusted[j]) &&
+                (current_norm_estimates[j] > max_trusted_current_estimate))
+                max_trusted_current_estimate = current_norm_estimates[j];
+        }
+
+        // change diffi
+        idx_t number_of_recompute = 0;
+        for (idx_t j = i + 1; j < n; j++) {
+            if (current_norm_estimates[j] != zero) {
+                // if (!trusted[j] &&
+                //     max_trusted_current_estimate < current_norm_estimates[j])
+                //     { need_to_be_recomputed[j] = true; std::cout << "** at
+                //     step i = " << offset + i
+                //               << ", column j = " << offset + j
+                //               << " is recomputed\n";
+                //     number_of_recompute++;
+                if (!trusted[j]) {
+                    need_to_be_recomputed[j] = true;
+                    std::cout << "** at step i = " << offset + i
+                              << ", column j = " << offset + j
+                              << " is to be recomputed\n";
+                    number_of_recompute++;
+                }
+                else {
+                    real_t temp;
+
+                    temp = tlapack::abs(A(i, j)) / current_norm_estimates[j];
+                    temp = max(zero, (one + temp) * (one - temp));
+
+                    current_norm_estimates[j] =
+                        current_norm_estimates[j] * sqrt(temp);
+                }
             }
+        }
 
-            for (idx_t ixb = 0; ixb < number_of_difficult; ixb++) {
-                idx_t jj = difficult[ixb];
-                std::cout << "  ** jj = " << offset + jj;
-                auto tilA = slice(A, pair{i + 1, m}, pair{jj, jj + 1});
-                auto tilAx = slice(Ax, pair{i + 1, m}, pair{ixb, ixb + 1});
-                lacpy(Uplo::General, tilA, tilAx);
-                auto tilF = slice(F, pair{jj, jj + 1}, pair{0, i + 1});
-                auto tilFx = slice(Fx, pair{ixb, ixb + 1}, pair{0, i + 1});
-                lacpy(Uplo::General, tilF, tilFx);
+        idx_t i_number_of_recompute = 0;
+        for (idx_t j = i + 1; j < n; j++) {
+            if (need_to_be_recomputed[j]) {
+                location_recompute[i_number_of_recompute] = j;
+                i_number_of_recompute++;
             }
+            if ((i_number_of_recompute == xb) ||
+                ((i_number_of_recompute > 0) && (j == n - 1))) {
+                for (idx_t ixb = 0; ixb < i_number_of_recompute; ixb++) {
+                    idx_t jj = location_recompute[ixb];
+                    std::cout << "** at step i = " << offset + i
+                              << ", column j = " << offset + jj
+                              << " is to ** recomputed\n";
+                    auto tilA = slice(A, pair{i + 1, m}, pair{jj, jj + 1});
+                    auto tilAx = slice(Ax, pair{i + 1, m}, pair{ixb, ixb + 1});
+                    lacpy(Uplo::General, tilA, tilAx);
+                    auto tilF = slice(F, pair{jj, jj + 1}, pair{0, i + 1});
+                    auto tilFx = slice(Fx, pair{ixb, ixb + 1}, pair{0, i + 1});
+                    lacpy(Uplo::General, tilF, tilFx);
+                }
 
-            auto V = slice(A, pair{i + 1, m}, pair{0, i + 1});
-            auto tilAx =
-                slice(Ax, pair{i + 1, m}, pair{0, number_of_difficult});
-            auto tilF = slice(Fx, pair{0, number_of_difficult}, pair{0, i + 1});
-            gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilAx);
+                auto V = slice(A, pair{i + 1, m}, pair{0, i + 1});
+                auto tilAx =
+                    slice(Ax, pair{i + 1, m}, pair{0, i_number_of_recompute});
+                auto tilF =
+                    slice(Fx, pair{0, i_number_of_recompute}, pair{0, i + 1});
+                gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilAx);
 
-            for (idx_t ixb = 0; ixb < number_of_difficult; ixb++) {
-                idx_t jj = difficult[ixb];
-                current_norm_estimates[jj] =
-                    nrm2(slice(Ax, pair{i + 1, m}, ixb));
-                last_computed_norms[jj] = current_norm_estimates[jj];
-                trusted[jj] = true;
-            }
+                for (idx_t ixb = 0; ixb < i_number_of_recompute; ixb++) {
+                    idx_t jj = location_recompute[ixb];
+                    current_norm_estimates[jj] =
+                        nrm2(slice(Ax, pair{i + 1, m}, ixb));
+                    last_computed_norms[jj] = current_norm_estimates[jj];
+                    trusted[jj] = true;
+                    need_to_be_recomputed[jj] = false;
+                }
 
-            if (number_of_difficult > 0) {
-                std::cout << "\n";
+                i_number_of_recompute = 0;
             }
         }
 
         // Put A(i,i) back to its place
         A(i, i) = Aii;
-
-        // In the case we exit when the first non trusted is found, exit here
-        if (opts.exit_when_find_first_non_trusted && number_of_difficult > 0)
-            break;
     }
 
     kb = i;
@@ -313,7 +271,8 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
     auto tilF = slice(F, pair{kb, n}, pair{0, kb});
     gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilA);
 
-    if (opts.exit_when_find_first_non_trusted && difficult[0] > 0) {
+    if (opts.exit_when_find_first_need_to_be_recomputed &&
+        location_recompute[0] > 0) {
         for (idx_t j = kb; j < n; j++) {
             if (current_norm_estimates[j] != zero) {
                 //                   NOTE: The following 4 lines follow from

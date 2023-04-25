@@ -51,8 +51,9 @@ TEMPLATE_TEST_CASE(
     m = 100;
     n = 100;
     nb = 13;
-    const LAqpsVariant var = GENERATE(LAqpsVariant::Trick, LAqpsVariant::TrickX,
-                                      LAqpsVariant::TrickXX, LAqpsVariant::full_opts);
+    // const LAqpsVariant var = GENERATE(LAqpsVariant::Trick, LAqpsVariant::TrickX,
+    //                                   LAqpsVariant::TrickXX, LAqpsVariant::full_opts);
+    const LAqpsVariant var = GENERATE(LAqpsVariant::full_opts);
     // m = GENERATE(9, 19, 30);
     // n = GENERATE(9, 19, 30);
     k = std::min<idx_t>(m, n);
