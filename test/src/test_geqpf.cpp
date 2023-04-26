@@ -30,10 +30,10 @@ using namespace tlapack;
 TEMPLATE_TEST_CASE(
     "QR factorization with column pivoting of a general m-by-n matrix",
     "[qpf]",
-    //   TLAPACK_TYPES_TO_TEST
+       TLAPACK_TYPES_TO_TEST)
     // legacyMatrix<double>
     // legacyMatrix<std::complex<float>>
-    legacyMatrix<Eigen::half>)
+    //legacyMatrix<Eigen::half>)
 {
     srand(1);
 
@@ -56,10 +56,10 @@ TEMPLATE_TEST_CASE(
     //                                   LAqpsVariant::TrickXX, LAqpsVariant::full_opts);
     // const LAqpsVariant var = GENERATE(LAqpsVariant::full_opts);
     const LAqpsVariant var = LAqpsVariant::full_opts;
-    // m = GENERATE(30, 100);
-    // n = GENERATE( 9, 31, 100 );
-    // nb = GENERATE(1, 9, 19, 200);
-    // xb = GENERATE(1, 4, 100);
+    m = GENERATE(30, 50);
+    n = GENERATE( 9, 31, 50 );
+    nb = GENERATE(1, 9, 19, 200);
+    xb = GENERATE(1, 4, 100);
     k = std::min<idx_t>(m, n);
 
     INFO("nb = " << nb);

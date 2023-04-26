@@ -123,7 +123,10 @@ int geqp3(matrix_t& A,
         geqp3_worksize(A, jpvt, tau, workinfo, opts);
         return alloc_workspace(localworkdata, workinfo, opts.work);
     }();
-    auto vector_of_norms = new_vector(work, 2 * n);
+
+    /// TODO: For weslley
+    // auto vector_of_norms = new_vector(work, 2 * n);
+    std::vector<real_t> vector_of_norms(2*n);
 
     for (idx_t j = 0; j < n; j++) {
         vector_of_norms[j] = nrm2(col(A, j));
@@ -156,7 +159,7 @@ int geqp3(matrix_t& A,
                        laqps_full_opts_t<idx_t, real_t>{opts.xb,real_t(10),false});
         }
 
-        std::cout << "kb = " << ib << std::endl;
+        // std::cout << "kb = " << ib << std::endl;
 
         // Swap the columns above Akk
         auto A0k = slice(A, pair{0, i}, pair{i, n});

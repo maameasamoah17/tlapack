@@ -78,6 +78,7 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
     std::vector<idx_t> location_recompute(xb);
     std::vector<bool> trusted(n);
     std::vector<bool> need_to_be_recomputed(n);
+    std::vector<real_t> fluid_trusted(n);
 
     // Initializing vector trusted
     for (idx_t j = 0; j < n; ++j)
@@ -97,6 +98,12 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
             if (current_norm_estimates[j] > current_norm_estimates[jpvt[i]])
                 jpvt[i] = j;
         }
+
+        // std::cout << "^^^^^^^^^ at step i = " << offset + i
+        //           << ", pivot is = " << offset + jpvt[i]
+        //           << " ^^^^^^^^^ norm of the pivot column is "
+        //           << current_norm_estimates[jpvt[i]] << std::endl;
+
         auto ai = col(A, i);
         auto bi = col(A, jpvt[i]);
         tlapack::swap(ai, bi);
@@ -105,6 +112,9 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
         tlapack::swap(frow1, frow2);
         std::swap(current_norm_estimates[i], current_norm_estimates[jpvt[i]]);
         std::swap(last_computed_norms[i], last_computed_norms[jpvt[i]]);
+        std::swap(trusted[i], trusted[jpvt[i]]);
+        std::swap(fluid_trusted[i], fluid_trusted[jpvt[i]]);
+        std::swap(need_to_be_recomputed[i], need_to_be_recomputed[jpvt[i]]);
 
         // Apply previous Householder reflectors to column K:
         // A(RK:M,K) := A(RK:M,K) - A(RK:M,1:K-1)*F(K,1:K-1)**H.
@@ -153,10 +163,11 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
         auto F5 = slice(F, pair{i + 1, n}, pair{0, i + 1});
         gemm(Op::NoTrans, Op::ConjTrans, -one, A4, F5, one, A5);
 
-        // trusted / non-trusted
+        // trusted / non-trusted, and update trusted norms
         for (idx_t j = i + 1; j < n; j++) {
-            std::cout << "Current norm of column " << j << ": "
-                      << current_norm_estimates[j] << std::endl;
+            // std::cout << "** at step i = " << offset + i
+            //           << " -- Current norm estimate of column " << j << ": "
+            //           << current_norm_estimates[j];
             if (current_norm_estimates[j] != zero) {
                 //                  NOTE: The following 4 lines follow from
                 //                  the analysis in Lapack Working Note 176.
@@ -168,16 +179,27 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
                     temp2 = current_norm_estimates[j] / last_computed_norms[j];
                     temp2 = temp * (temp2 * temp2);
                     trusted[j] = (temp2 > tol3z);
+                    // if ( fluid_trusted > 1 ) then trust
+                    fluid_trusted[j] = temp2 / tol3z;
+
                     if (!trusted[j]) {
-                        std::cout << "** at step i = " << offset + i
-                                  << ", column j = " << offset + j
-                                  << " is not trusted\n";
+                        // std::cout << ", column j = " << offset + j
+                        //           << " is becoming not trusted" << std::endl;
                     }
                     else {
                         current_norm_estimates[j] =
                             current_norm_estimates[j] * sqrt(temp);
+                        // std::cout << ", updated norm estimate is "
+                        //           << current_norm_estimates[j] << std::endl;
                     }
                 }
+                else {
+                    // std::cout << " ( has already been set as not trusted ) "
+                    //           << std::endl;
+                }
+            }
+            else {
+                // std::cout << " current norm estimate is zero " << std::endl;
             }
         }
 
@@ -189,26 +211,22 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
                 max_trusted_current_estimate = current_norm_estimates[j];
         }
 
-        std::cout << "Max trusted at iter " << i << ": "
-                  << max_trusted_current_estimate << std::endl;
+        // std::cout << "Max trusted at iter " << i << ": "
+        //           << max_trusted_current_estimate << std::endl;
 
-        // change diffi
+        const real_t alpha_trust(0.5); // between [0 and 1]
+        const real_t alpha_max(0.5); // between [0 and 1]
+        // decide which columns to recompute or not
         for (idx_t j = i + 1; j < n; j++) {
             if (current_norm_estimates[j] != zero) {
-                // if (!trusted[j] &&
-                //     max_trusted_current_estimate < current_norm_estimates[j])
-                //     { need_to_be_recomputed[j] = true; std::cout << "** at
-                //     step i = " << offset + i
-                //               << ", column j = " << offset + j
-                //               << " is recomputed\n";
-                //     number_of_recompute++;
-                // if (!trusted[j]){
-                if (!trusted[j] && ((0 * max_trusted_current_estimate) <
-                                    current_norm_estimates[j])) {
+                // if ( fluid_trusted > 1 ) then trust
+                if ((alpha_trust * fluid_trusted[j] <= 1) &&
+                    ((alpha_max * max_trusted_current_estimate) <
+                     current_norm_estimates[j])) {
                     need_to_be_recomputed[j] = true;
-                    std::cout << "** at step i = " << offset + i
-                              << ", column j = " << offset + j
-                              << " is to be recomputed\n";
+                    // std::cout << "** at step i = " << offset + i
+                    //           << ", column j = " << offset + j
+                    //           << " is to be recomputed\n";
                     number_of_recompute++;
                 }
                 // else {
@@ -223,8 +241,7 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
             }
         }
 
-        //      make decision on whoi will be ecomputed
-
+        // recomputation step        
         if ((number_of_recompute > 0) &&
             (!opts.exit_when_find_first_need_to_be_recomputed)) {
             idx_t i_number_of_recompute = 0;
@@ -237,9 +254,6 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
                     ((i_number_of_recompute > 0) && (j == n - 1))) {
                     for (idx_t ixb = 0; ixb < i_number_of_recompute; ixb++) {
                         idx_t jj = location_recompute[ixb];
-                        std::cout << "** at step i = " << offset + i
-                                  << ", column j = " << offset + jj
-                                  << " is ** ** recomputed\n";
                         auto tilA = slice(A, pair{i + 1, m}, pair{jj, jj + 1});
                         auto tilAx =
                             slice(Ax, pair{i + 1, m}, pair{ixb, ixb + 1});
@@ -264,6 +278,11 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
                         last_computed_norms[jj] = current_norm_estimates[jj];
                         trusted[jj] = true;
                         need_to_be_recomputed[jj] = false;
+                        // std::cout
+                        //     << "** at step i = " << offset + i
+                        //     << ", column j = " << offset + jj
+                        //     << " is ** ** recomputed -- recomputed value is "
+                        //     << last_computed_norms[jj] << "\n";
                     }
 
                     i_number_of_recompute = 0;
@@ -285,6 +304,7 @@ int laqps_full(size_type<matrix_t>& offset,  // will need to be removed,
     auto tilF = slice(F, pair{kb, n}, pair{0, kb});
     gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilA);
 
+    // recomputation outside the panel
     if (opts.exit_when_find_first_need_to_be_recomputed &&
         number_of_recompute > 0) {
         for (idx_t j = kb; j < n; j++) {
