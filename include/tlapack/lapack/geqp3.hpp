@@ -156,7 +156,7 @@ int geqp3(matrix_t& A,
         }
         else if (opts.variant == LAqpsVariant::full_opts) {
             laqps_full(i, ib, Akk, jpvtk, tauk, partial_normsk, exact_normsk,
-                       laqps_full_opts_t<idx_t, real_t>{opts.xb,real_t(10),false});
+                       laqps_full_opts_t<idx_t, real_t>{false,real_t(1),real_t(1),false,opts.xb});
         }
 
         // std::cout << "kb = " << ib << std::endl;
