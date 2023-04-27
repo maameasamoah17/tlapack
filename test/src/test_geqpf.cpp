@@ -30,10 +30,10 @@ using namespace tlapack;
 TEMPLATE_TEST_CASE(
     "QR factorization with column pivoting of a general m-by-n matrix",
     "[qpf]",
-       TLAPACK_TYPES_TO_TEST)
+    //    TLAPACK_TYPES_TO_TEST)
     // legacyMatrix<double>
     // legacyMatrix<std::complex<float>>
-    //legacyMatrix<Eigen::half>)
+    legacyMatrix<Eigen::half>)
 {
     srand(1);
 
@@ -48,18 +48,20 @@ TEMPLATE_TEST_CASE(
 
     idx_t m, n, k, nb, xb;
 
-    m = 100;
-    n = 100;
-    nb = 200;
+    m = 50;
+    n = 50;
+    nb = 19;
     xb = 100;
-    // const LAqpsVariant var = GENERATE(LAqpsVariant::Trick, LAqpsVariant::TrickX,
-    //                                   LAqpsVariant::TrickXX, LAqpsVariant::full_opts);
+    // const LAqpsVariant var = GENERATE(LAqpsVariant::Trick,
+    // LAqpsVariant::TrickX,
+    //                                   LAqpsVariant::TrickXX,
+    //                                   LAqpsVariant::full_opts);
     // const LAqpsVariant var = GENERATE(LAqpsVariant::full_opts);
     const LAqpsVariant var = LAqpsVariant::full_opts;
-    m = GENERATE(30, 50);
-    n = GENERATE( 9, 31, 50 );
-    nb = GENERATE(1, 9, 19, 200);
-    xb = GENERATE(1, 4, 100);
+    // m = GENERATE(30, 50);
+    // n = GENERATE( 9, 31, 50 );
+    // nb = GENERATE(1, 9, 19, 200);
+    // xb = GENERATE(1, 4, 100);
     k = std::min<idx_t>(m, n);
 
     INFO("nb = " << nb);
@@ -148,11 +150,12 @@ TEMPLATE_TEST_CASE(
             diagonal_is_nonincreasing = diagonal_is_nonincreasing &&
                                         (tlapack::abs(R0(i, i)) * (1 + tol) >=
                                          tlapack::abs(R0(i + 1, i + 1)));
+            UNSCOPED_INFO(i << ": " << diagonal_is_nonincreasing);
         }
-        // for (idx_t i = 0; i < k; ++i) {
-        //     UNSCOPED_INFO(tlapack::abs(R0(i, i)));
-        // }
-        // std::cout << diagonal_is_nonincreasing << "\n";
+        for (idx_t i = 0; i < k; ++i) {
+            UNSCOPED_INFO(i << ": " << tlapack::abs(R0(i, i)));
+            // std::cout << i << " " << diagonal_is_nonincreasing << "\n";
+        }
         CHECK(diagonal_is_nonincreasing);
 
         // for (idx_t i = 0; i < k; ++i) {

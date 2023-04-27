@@ -155,8 +155,13 @@ int geqp3(matrix_t& A,
                           laqps_trickxx_opts_t<idx_t>{opts.nb});
         }
         else if (opts.variant == LAqpsVariant::full_opts) {
-            laqps_full(i, ib, Akk, jpvtk, tauk, partial_normsk, exact_normsk,
-                       laqps_full_opts_t<idx_t, real_t>{false,real_t(1),real_t(1),false,opts.xb});
+            laqps_full_opts_t<idx_t, real_t> optsQPS;
+            optsQPS.alpha_max = real_t(0.);
+            optsQPS.alpha_trust = real_t(1.);
+            optsQPS.verbose = true;
+            optsQPS.exit_when_find_first_need_to_be_recomputed = false;
+            optsQPS.xb = opts.xb;
+            laqps_full(i, ib, Akk, jpvtk, tauk, partial_normsk, exact_normsk, optsQPS);
         }
 
         // std::cout << "kb = " << ib << std::endl;
