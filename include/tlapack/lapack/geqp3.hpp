@@ -133,14 +133,10 @@ int geqp3(matrix_t& A,
         vector_of_norms[n + j] = vector_of_norms[j];
     }
 
-    std::vector<real_t> trusted(n);
     std::vector<real_t> fluid_trusted(n);
-    std::vector<real_t> need_to_be_recomputed(n);
 
     for (idx_t j = 0; j < n; ++j) {
-        trusted[j] = real_t(1);
         fluid_trusted[j] = real_t(1);
-        need_to_be_recomputed[j] = real_t(0);
     }
 
     for (idx_t i = 0; i < k;) {
@@ -151,9 +147,7 @@ int geqp3(matrix_t& A,
         auto tauk = slice(tau, pair{i, i + ib});
         auto partial_normsk = slice(vector_of_norms, pair{i, n});
         auto exact_normsk = slice(vector_of_norms, pair{n + i, 2 * n});
-        auto trustedk = slice(trusted, pair{i, n});
         auto fluid_trustedk = slice(fluid_trusted, pair{i, n});
-        auto need_to_be_recomputedk = slice(need_to_be_recomputed, pair{i, n});
 
         if (opts.variant == LAqpsVariant::Trick) {
             laqps_trick(ib, Akk, jpvtk, tauk, partial_normsk, exact_normsk,
@@ -174,7 +168,7 @@ int geqp3(matrix_t& A,
             optsQPS.verbose = false;
             optsQPS.exit_when_find_first_need_to_be_recomputed = false;
             optsQPS.xb = opts.xb;
-            laqps_full(fluid_trustedk, need_to_be_recomputedk, trustedk, i, ib, Akk, jpvtk, tauk, partial_normsk,
+            laqps_full(fluid_trustedk, i, ib, Akk, jpvtk, tauk, partial_normsk,
                        exact_normsk, optsQPS);
         }
 
