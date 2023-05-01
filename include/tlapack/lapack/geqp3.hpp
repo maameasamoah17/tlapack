@@ -28,8 +28,8 @@ struct geqp3_opts_t : public workspace_opts_t<> {
     inline constexpr geqp3_opts_t(const workspace_opts_t<>& opts = {})
         : workspace_opts_t<>(opts){};
 
-    idx_t nb = 32;                                 ///< Panel default size
-    idx_t xb = 13;                                 ///< Block size for norm recomputation inside the panel
+    idx_t nb = 32;  ///< Panel default size
+    idx_t xb = 13;  ///< Block size for norm recomputation inside the panel
     LAqpsVariant variant = LAqpsVariant::TrickXX;  ///< Variant for LAQPS
 };
 
@@ -126,11 +126,21 @@ int geqp3(matrix_t& A,
 
     /// TODO: For weslley
     // auto vector_of_norms = new_vector(work, 2 * n);
-    std::vector<real_t> vector_of_norms(2*n);
+    std::vector<real_t> vector_of_norms(2 * n);
 
     for (idx_t j = 0; j < n; j++) {
         vector_of_norms[j] = nrm2(col(A, j));
         vector_of_norms[n + j] = vector_of_norms[j];
+    }
+
+    std::vector<real_t> trusted(n);
+    std::vector<real_t> fluid_trusted(n);
+    std::vector<real_t> need_to_be_recomputed(n);
+
+    for (idx_t j = 0; j < n; ++j) {
+        trusted[j] = real_t(1);
+        fluid_trusted[j] = real_t(1);
+        need_to_be_recomputed[j] = real_t(0);
     }
 
     for (idx_t i = 0; i < k;) {
@@ -141,6 +151,9 @@ int geqp3(matrix_t& A,
         auto tauk = slice(tau, pair{i, i + ib});
         auto partial_normsk = slice(vector_of_norms, pair{i, n});
         auto exact_normsk = slice(vector_of_norms, pair{n + i, 2 * n});
+        auto trustedk = slice(trusted, pair{i, n});
+        auto fluid_trustedk = slice(fluid_trusted, pair{i, n});
+        auto need_to_be_recomputedk = slice(need_to_be_recomputed, pair{i, n});
 
         if (opts.variant == LAqpsVariant::Trick) {
             laqps_trick(ib, Akk, jpvtk, tauk, partial_normsk, exact_normsk,
@@ -156,12 +169,13 @@ int geqp3(matrix_t& A,
         }
         else if (opts.variant == LAqpsVariant::full_opts) {
             laqps_full_opts_t<idx_t, real_t> optsQPS;
-            optsQPS.alpha_max = real_t(0.);
+            optsQPS.alpha_max = real_t(1.);
             optsQPS.alpha_trust = real_t(1.);
-            optsQPS.verbose = true;
+            optsQPS.verbose = false;
             optsQPS.exit_when_find_first_need_to_be_recomputed = false;
             optsQPS.xb = opts.xb;
-            laqps_full(i, ib, Akk, jpvtk, tauk, partial_normsk, exact_normsk, optsQPS);
+            laqps_full(fluid_trustedk, need_to_be_recomputedk, trustedk, i, ib, Akk, jpvtk, tauk, partial_normsk,
+                       exact_normsk, optsQPS);
         }
 
         // std::cout << "kb = " << ib << std::endl;
