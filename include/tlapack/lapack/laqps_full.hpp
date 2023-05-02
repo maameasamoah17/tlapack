@@ -54,7 +54,7 @@ struct laqps_full_opts_t {
      * to recompute.
      * - never set above 1. (Otherwise you have quantities (upper bounds) that
      * are above the maximum trusted column norm, and that is not a good idea.)
-     * - if you set at 0, then you recompye
+     * - if you set at 0, then you recompute
      */
     real_t alpha_max = real_t(0.5);
 
@@ -106,6 +106,13 @@ int laqps_full(vector2_t& fluid_trusted,
     //     geqp3_worksize(A, jpvt, tau, workinfo, opts);
     //     return alloc_workspace(localworkdata, workinfo, opts.work);
     // }();
+
+    // std::cout << "opts.alpha_max = " << opts.alpha_max
+    //      << " opts.alpha_trust = " << opts.alpha_trust
+    //      << " opts.verbose = " << opts.verbose
+    //      << " opts.exit_when_find_first_need_to_be_recomputed = "
+    //      << opts.exit_when_find_first_need_to_be_recomputed
+    //      << " opts.xb = " << opts.xb << "\n";
 
     std::vector<T> auxv_;
     auto auxv = new_matrix(auxv_, nb, 1);
@@ -374,9 +381,8 @@ int laqps_full(vector2_t& fluid_trusted,
                 if (need_to_be_recomputed[j]) {
                     if (verbose) {
                         std::cout << "r ****** i = " << kb - 1
-                                  << "****** j = " << j << "**" << A(kb - 1, j)
-                                  << " -- " << current_norm_estimates[j]
-                                  << "\n";
+                                  << "****** j = " << j << "**"
+                                  << current_norm_estimates[j] << "\n";
                     }
                     current_norm_estimates[j] = nrm2(slice(A, pair{kb, m}, j));
                     last_computed_norms[j] = current_norm_estimates[j];

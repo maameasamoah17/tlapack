@@ -23,13 +23,41 @@ enum class LAqpsVariant : char { Trick, TrickX, TrickXX, full_opts };
 /**
  * Options struct for geqp3
  */
-template <class idx_t = size_t>
+template <class real_t, class idx_t = size_t>
 struct geqp3_opts_t : public workspace_opts_t<> {
     inline constexpr geqp3_opts_t(const workspace_opts_t<>& opts = {})
         : workspace_opts_t<>(opts){};
 
     idx_t nb = 32;  ///< Panel default size
     idx_t xb = 13;  ///< Block size for norm recomputation inside the panel
+
+    /**
+     * alpha_trust is how much you want to be fluid on your concept of
+     * ``trusting``.
+     * - never set above 1. (Otherwise you trust things that should not be
+     * trusted.)
+     * - if you set at 1, . . .
+     * - if you set below 1, you try to recompute quantity that are trusted
+     * but close from being not trusted
+     * - if you set to 0, you never trust the formula, so you always recompute
+     * the norm by doing a projection.
+     */
+    real_t alpha_trust = real_t(1.);
+
+    /**
+     * alpha_max is how much you want to be fluid on your concept of ``max``.
+     * You have an array of either (1) an upperbound on your norm estimate, or
+     * (2) your norm estimate. And if you are close to the max, you might want
+     * to recompute.
+     * - never set above 1. (Otherwise you have quantities (upper bounds) that
+     * are above the maximum trusted column norm, and that is not a good idea.)
+     * - if you set at 0, then you recompye
+     */
+    real_t alpha_max = real_t(1.);
+
+    // Strategy 1 for recomputation:
+    bool exit_when_find_first_need_to_be_recomputed = false;  ///< Strategy to exit before the block size is achieved
+
     LAqpsVariant variant = LAqpsVariant::TrickXX;  ///< Variant for LAQPS
 };
 
@@ -94,7 +122,8 @@ template <class matrix_t, class vector_idx, class vector_t>
 int geqp3(matrix_t& A,
           vector_idx& jpvt,
           vector_t& tau,
-          const geqp3_opts_t<size_type<matrix_t>>& opts = {})
+          const geqp3_opts_t<real_type<type_t<matrix_t>>, size_type<matrix_t>>&
+              opts = {})
 {
     using work_t = vector_type<matrix_t>;
     using T = type_t<matrix_t>;
@@ -136,7 +165,9 @@ int geqp3(matrix_t& A,
     std::vector<real_t> fluid_trusted(n);
 
     for (idx_t j = 0; j < n; ++j) {
-        fluid_trusted[j] = real_t(1);
+// initialize with a number greater than one.
+// 1 / tol3z would make sense
+        fluid_trusted[j] = real_t(1.1);
     }
 
     for (idx_t i = 0; i < k;) {
@@ -163,10 +194,10 @@ int geqp3(matrix_t& A,
         }
         else if (opts.variant == LAqpsVariant::full_opts) {
             laqps_full_opts_t<idx_t, real_t> optsQPS;
-            optsQPS.alpha_max = real_t(1.);
-            optsQPS.alpha_trust = real_t(1.);
+            optsQPS.alpha_max = opts.alpha_max;
+            optsQPS.alpha_trust = opts.alpha_trust;
             optsQPS.verbose = false;
-            optsQPS.exit_when_find_first_need_to_be_recomputed = false;
+            optsQPS.exit_when_find_first_need_to_be_recomputed = opts.exit_when_find_first_need_to_be_recomputed;
             optsQPS.xb = opts.xb;
             laqps_full(fluid_trustedk, i, ib, Akk, jpvtk, tauk, partial_normsk,
                        exact_normsk, optsQPS);
