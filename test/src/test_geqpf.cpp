@@ -50,9 +50,9 @@ TEMPLATE_TEST_CASE(
     real_t alpha_max, alpha_trust;
     bool exit_when_find_first_need_to_be_recomputed;
 
-    m = 50;
-    n = 25;
-    nb = 19;
+    m = 30;
+    n = 9;
+    nb = 200;
     xb = 100;
     alpha_max = real_t(1.0);
     alpha_trust = real_t(1.0);
@@ -75,9 +75,6 @@ TEMPLATE_TEST_CASE(
 
     k = std::min<idx_t>(m, n);
 
-    INFO("nb = " << nb);
-    INFO("xb = " << xb);
-
     const real_t eps = ulp<real_t>();
     const real_t tol = real_t(2 * std::max<idx_t>(m, n)) * eps;
 
@@ -93,12 +90,13 @@ TEMPLATE_TEST_CASE(
 
     // Options:
     geqp3_opts_t<real_t, size_type<matrix_t>> workOpts;
-    workOpts.nb = 200;
-    workOpts.xb = 5;
+    workOpts.nb = nb;
+    workOpts.xb = xb;
     workOpts.variant = var;
     workOpts.alpha_max = alpha_max;
     workOpts.alpha_trust = alpha_trust;
-    workOpts.exit_when_find_first_need_to_be_recomputed = exit_when_find_first_need_to_be_recomputed;
+    workOpts.exit_when_find_first_need_to_be_recomputed =
+        exit_when_find_first_need_to_be_recomputed;
 
     for (idx_t j = 0; j < n; ++j)
         for (idx_t i = 0; i < m; ++i)
@@ -109,6 +107,11 @@ TEMPLATE_TEST_CASE(
     // if (k > n) return;
 
     INFO("m = " << m << " n = " << n);
+    INFO("alpha_max = " << alpha_max << " alpha_trust = " << alpha_trust);
+    INFO("nb = " << nb << "xb = " << xb);
+    INFO("exit_when_find_first_need_to_be_recomputed = "
+         << exit_when_find_first_need_to_be_recomputed);
+
     {
         // geqpf(A, jpvt, tauw, workOpts);
         // laqp3_trick( A, jpvt, tauw, workOpts );

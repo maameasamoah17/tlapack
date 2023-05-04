@@ -131,6 +131,9 @@ int geqp3(matrix_t& A,
     using idx_t = size_type<matrix_t>;
     using pair = pair<idx_t, idx_t>;
 
+    const real_t eps = ulp<real_t>();
+    const real_t tol3z = sqrt(eps);
+
     // Functor
     Create<work_t> new_vector;
 
@@ -167,7 +170,7 @@ int geqp3(matrix_t& A,
     for (idx_t j = 0; j < n; ++j) {
 // initialize with a number greater than one.
 // 1 / tol3z would make sense
-        fluid_trusted[j] = real_t(1.1);
+        fluid_trusted[j] = real_t(1. / tol3z);
     }
 
     for (idx_t i = 0; i < k;) {

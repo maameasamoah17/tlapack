@@ -143,11 +143,26 @@ int laqps_full(vector2_t& fluid_trusted,
     // main loop
     for (i = 0; i < nb && number_of_recompute == 0; ++i) {
         // Determine ith pivot column and swap if necessary
-        jpvt[i] = i;
-        for (idx_t j = i + 1; j < n; j++) {
-            if (current_norm_estimates[j] > current_norm_estimates[jpvt[i]])
-                jpvt[i] = j;
+        bool someone_is_trusted = false;
+
+        for (idx_t j = i; j < n; j++) {
+            if (fluid_trusted[j] > real_t(1)) {
+                if (!someone_is_trusted) {
+                    someone_is_trusted = true;
+                    jpvt[i] = j;
+                }
+                else {
+                    if (current_norm_estimates[j] >
+                        current_norm_estimates[jpvt[i]])
+                        // if (current_norm_estimates[j] >
+                        // current_norm_estimates[jpvt[i]])
+                        jpvt[i] = j;
+                }
+            }
         }
+
+        if (!someone_is_trusted)
+            std::cout << "????? we should never be here ?????" << i;
 
         if (verbose) {
             std::cout << "^^^^^^^^^ at step i = " << offset + i
@@ -235,6 +250,7 @@ int laqps_full(vector2_t& fluid_trusted,
 
                     // if ( fluid_trusted > 1 ) then trust
                     fluid_trusted[j] = temp2 / tol3z;
+                    // std::cout << ", fluid_trusted = " << fluid_trusted[j];
 
                     if (fluid_trusted[j] <= real_t(1)) {
                         if (verbose) {
@@ -267,8 +283,10 @@ int laqps_full(vector2_t& fluid_trusted,
         }
 
         // find the max trusted column norm
-        real_t max_trusted_current_estimate = zero;
+        real_t max_trusted_current_estimate = real_t(-1.);
+        someone_is_trusted = false;
         for (idx_t j = i + 1; j < n; j++) {
+            if (fluid_trusted[j] > real_t(1)) someone_is_trusted = true;
             if ((fluid_trusted[j] > real_t(1)) &&
                 (current_norm_estimates[j] > max_trusted_current_estimate))
                 max_trusted_current_estimate = current_norm_estimates[j];
@@ -280,31 +298,56 @@ int laqps_full(vector2_t& fluid_trusted,
         }
 
         // decide which columns to recompute or not
-        for (idx_t j = i + 1; j < n; j++) {
-            if (current_norm_estimates[j] != zero) {
-                // if ( fluid_trusted > 1 ) then trust
-                if ((opts.alpha_trust * fluid_trusted[j] <= real_t(1)) &&
-                    ((opts.alpha_max * max_trusted_current_estimate) <=
-                     current_norm_estimates[j])) {
-                    need_to_be_recomputed[j] = true;
-                    if (verbose) {
-                        std::cout << "** at step i = " << offset + i
-                                  << ", column j = " << offset + j
-                                  << " is to be recomputed\n";
-                    }
-                    number_of_recompute++;
+        number_of_recompute = 0;
+
+        if (!someone_is_trusted)
+            for (idx_t j = i + 1; j < n; j++) {
+                need_to_be_recomputed[j] = true;
+                number_of_recompute++;
+                if (verbose) {
+                    std::cout << "** at step i = " << offset + i
+                              << ", column j = " << offset + j
+                              << " is to be recomputed\n";
                 }
-                // else {
-                //     real_t temp;
-
-                //     temp = tlapack::abs(A(i, j)) / current_norm_estimates[j];
-                //     temp = max(zero, (one + temp) * (one - temp));
-
-                //     current_norm_estimates[j] =
-                //         current_norm_estimates[j] * sqrt(temp);
-                // }
             }
-        }
+
+        if (someone_is_trusted)
+            for (idx_t j = i + 1; j < n; j++) {
+                if (current_norm_estimates[j] != zero) {
+                    // if ( fluid_trusted > 1 ) then trust
+                    // std::cout << "[][][]" << offset + j << "[][][]"
+                    //           << fluid_trusted[j] << "     "
+                    //           << opts.alpha_trust * fluid_trusted[j]
+                    //           << " == bool = "
+                    //           << (opts.alpha_trust * fluid_trusted[j] <=
+                    //           real_t(1))
+                    //           << "  ";
+                    if ((opts.alpha_trust * fluid_trusted[j] <= real_t(1)) &&
+                        ((opts.alpha_max * max_trusted_current_estimate) <=
+                         current_norm_estimates[j])) {
+                        need_to_be_recomputed[j] = true;
+                        if (verbose) {
+                            std::cout << "** at step i = " << offset + i
+                                      << ", column j = " << offset + j
+                                      << " is to be recomputed\n";
+                        }
+                        number_of_recompute++;
+                    }
+                    else {
+                        // std::cout << "\n";
+                    }
+                    // else {
+                    //     real_t temp;
+
+                    //     temp = tlapack::abs(A(i, j)) /
+                    //     current_norm_estimates[j]; temp = max(zero, (one
+                    //     + temp) * (one - temp));
+
+                    //     current_norm_estimates[j] =
+                    //         current_norm_estimates[j] * sqrt(temp);
+                    // }
+                }
+            }
 
         // recomputation step
         if ((number_of_recompute > 0) &&
@@ -341,7 +384,7 @@ int laqps_full(vector2_t& fluid_trusted,
                         current_norm_estimates[jj] =
                             nrm2(slice(Ax, pair{i + 1, m}, ixb));
                         last_computed_norms[jj] = current_norm_estimates[jj];
-                        fluid_trusted[jj] = real_t(1);
+                        fluid_trusted[jj] = real_t(1. / tol3z);
                         need_to_be_recomputed[jj] = false;
                         if (verbose) {
                             std::cout << "** at step i = " << offset + i
@@ -386,6 +429,8 @@ int laqps_full(vector2_t& fluid_trusted,
                     }
                     current_norm_estimates[j] = nrm2(slice(A, pair{kb, m}, j));
                     last_computed_norms[j] = current_norm_estimates[j];
+                    fluid_trusted[j] = real_t(1. / tol3z);
+                    need_to_be_recomputed[j] = false;
                 }
                 else {
                 }
