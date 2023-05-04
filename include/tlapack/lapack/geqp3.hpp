@@ -56,9 +56,10 @@ struct geqp3_opts_t : public workspace_opts_t<> {
     real_t alpha_max = real_t(1.);
 
     // Strategy 1 for recomputation:
-    bool exit_when_find_first_need_to_be_recomputed = false;  ///< Strategy to exit before the block size is achieved
+    bool exit_when_find_first_need_to_be_recomputed =
+        false;  ///< Strategy to exit before the block size is achieved
 
-    LAqpsVariant variant = LAqpsVariant::TrickXX;  ///< Variant for LAQPS
+    LAqpsVariant variant = LAqpsVariant::full_opts;  ///< Variant for LAQPS
 };
 
 template <class matrix_t, class vector_idx, class vector_t>
@@ -119,11 +120,11 @@ inline constexpr void geqp3_worksize(const matrix_t& A,
  * @ingroup computational
  */
 template <class matrix_t, class vector_idx, class vector_t>
-int geqp3(matrix_t& A,
-          vector_idx& jpvt,
-          vector_t& tau,
-          const geqp3_opts_t<real_type<type_t<matrix_t>>, size_type<matrix_t>>&
-              opts = {})
+int geqp3(
+    matrix_t& A,
+    vector_idx& jpvt,
+    vector_t& tau,
+    const geqp3_opts_t<real_type<type_t<matrix_t>>, size_type<matrix_t>>& opts)
 {
     using work_t = vector_type<matrix_t>;
     using T = type_t<matrix_t>;
@@ -168,8 +169,8 @@ int geqp3(matrix_t& A,
     std::vector<real_t> fluid_trusted(n);
 
     for (idx_t j = 0; j < n; ++j) {
-// initialize with a number greater than one.
-// 1 / tol3z would make sense
+        // initialize with a number greater than one.
+        // 1 / tol3z would make sense
         fluid_trusted[j] = real_t(1. / tol3z);
     }
 
@@ -200,7 +201,8 @@ int geqp3(matrix_t& A,
             optsQPS.alpha_max = opts.alpha_max;
             optsQPS.alpha_trust = opts.alpha_trust;
             optsQPS.verbose = false;
-            optsQPS.exit_when_find_first_need_to_be_recomputed = opts.exit_when_find_first_need_to_be_recomputed;
+            optsQPS.exit_when_find_first_need_to_be_recomputed =
+                opts.exit_when_find_first_need_to_be_recomputed;
             optsQPS.xb = opts.xb;
             laqps_full(fluid_trustedk, i, ib, Akk, jpvtk, tauk, partial_normsk,
                        exact_normsk, optsQPS);
@@ -223,6 +225,63 @@ int geqp3(matrix_t& A,
     }
     return 0;
 }
+
+template <class matrix_t,
+          class vector_idx,
+          class vector_t,
+          class T = type_t<matrix_t>,
+          enable_if_t<(!allow_optblas<pair<matrix_t, T>, pair<vector_t, T>>) ||
+                          (layout<matrix_t> != Layout::ColMajor),
+                      int> = 0>
+inline int geqp3(matrix_t& A, vector_idx& jpvt, vector_t& tau)
+{
+    return geqp3(A, jpvt, tau, {});
+}
+
+#ifdef USE_LAPACKPP_WRAPPERS
+
+template <class matrix_t,
+          class vector_idx,
+          class vector_t,
+          class T = type_t<matrix_t>,
+          enable_if_t<(allow_optblas<pair<matrix_t, T>, pair<vector_t, T>>)&&(
+                          layout<matrix_t> == Layout::ColMajor),
+                      int> = 0>
+int geqp3(matrix_t& A, vector_idx& jpvt, vector_t& tau)
+{
+    // Legacy objects
+    auto A_ = legacy_matrix(A);
+    auto tau_ = legacy_vector(tau);
+
+    // Constants to forward
+    const auto& m = A_.m;
+    const auto& n = A_.n;
+
+    // Init pivots
+    std::vector<int64_t> piv(n);
+    for (size_t i = 0; i < n; ++i)
+        piv[i] = 0;
+
+    // Run geqp3
+    int info = ::lapack::geqp3(m, n, A_.ptr, A_.ldim, piv.data(), tau_.ptr);
+
+    // Store pivots
+    using idx_t = type_t<vector_idx>;
+    for (idx_t i = 0; i < min(m, n); ++i) {
+        jpvt[i] = (idx_t)piv[i] - 1; // -1 because of Fortran indexing
+
+        // Now, use the new conventions for the pivots
+        size_t safety_counter = 0;
+        while (jpvt[i] < i && safety_counter < i) {
+            jpvt[i] = jpvt[jpvt[i]];
+            safety_counter++;
+        }
+    }
+
+    return info;
+}
+
+#endif
 
 }  // namespace tlapack
 

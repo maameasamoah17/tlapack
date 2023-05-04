@@ -30,10 +30,10 @@ using namespace tlapack;
 TEMPLATE_TEST_CASE(
     "QR factorization with column pivoting of a general m-by-n matrix",
     "[qpf]",
-    // TLAPACK_TYPES_TO_TEST)
-    // legacyMatrix<double>
+    TLAPACK_TYPES_TO_TEST)
+    // legacyMatrix<double>)
     // legacyMatrix<std::complex<float>>
-    legacyMatrix<Eigen::half>)
+    // legacyMatrix<Eigen::half>)
 {
     srand(1);
 
@@ -85,8 +85,13 @@ TEMPLATE_TEST_CASE(
     std::vector<T> Q_;
     auto Q = new_matrix(Q_, m, m);
 
-    std::vector<idx_t> jpvt(k);
-    std::vector<T> tauw(k);
+    // std::vector<idx_t> jpvt(k);
+    // std::vector<T> tauw(k);
+
+    std::vector<idx_t> jpvt_(k);
+    legacyVector<idx_t> jpvt(k,jpvt_.data());
+    std::vector<T> tauw_(k);
+    legacyVector<T> tauw(k,tauw_.data());
 
     // Options:
     geqp3_opts_t<real_t, size_type<matrix_t>> workOpts;
@@ -117,6 +122,7 @@ TEMPLATE_TEST_CASE(
         // laqp3_trick( A, jpvt, tauw, workOpts );
         // laqp3_trickx( A, jpvt, tauw, workOpts );
         // laqp3_trickxx( A, jpvt, tauw, workOpts );
+        // geqp3(A, jpvt, tauw, workOpts);
         geqp3(A, jpvt, tauw, workOpts);
 
         auto Q0 = slice(Q, range(0, m), range(0, k));

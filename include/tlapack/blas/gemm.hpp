@@ -349,7 +349,7 @@ inline void gemm(Op transA,
     const auto& k = (transA == Op::NoTrans) ? A_.n : A_.m;
 
     // Warnings for NaNs and Infs
-    if (alpha == alpha_t(0))
+    if (alpha == alpha_t(0) && m > 0 && n > 0 && k > 0)
         tlapack_warning(
             -3, "Infs and NaNs in A or B will not propagate to C on output");
 
