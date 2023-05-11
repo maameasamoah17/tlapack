@@ -125,7 +125,7 @@ int geqpf(matrix_t& A,
     std::vector<real_t> vector_of_norms(2 * n);
 
     for (idx_t j = 0; j < n; j++) {
-        vector_of_norms[j] = nrm2(slice(A, pair{0, m}, j));
+        vector_of_norms[j] = nrm2(col(A, j));
         vector_of_norms[n + j] = vector_of_norms[j];
     }
 

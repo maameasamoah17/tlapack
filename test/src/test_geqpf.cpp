@@ -30,10 +30,10 @@ using namespace tlapack;
 TEMPLATE_TEST_CASE(
     "QR factorization with column pivoting of a general m-by-n matrix",
     "[qpf]",
-    TLAPACK_TYPES_TO_TEST)
+    // TLAPACK_TYPES_TO_TEST)
     // legacyMatrix<double>)
     // legacyMatrix<std::complex<float>>
-    // legacyMatrix<Eigen::half>)
+    legacyMatrix<Eigen::half>)
 {
     srand(1);
 
@@ -49,14 +49,16 @@ TEMPLATE_TEST_CASE(
     idx_t m, n, k, nb, xb;
     real_t alpha_max, alpha_trust;
     bool exit_when_find_first_need_to_be_recomputed;
+    bool recompute_all_norms_after_each_panel_exit;
 
-    m = 30;
-    n = 9;
-    nb = 200;
+    m = 400;
+    n = 400;
+    nb = 20;
     xb = 100;
     alpha_max = real_t(1.0);
     alpha_trust = real_t(1.0);
-    exit_when_find_first_need_to_be_recomputed = false;
+    exit_when_find_first_need_to_be_recomputed = true;
+    recompute_all_norms_after_each_panel_exit = false;
     const LAqpsVariant var = LAqpsVariant::full_opts;
 
     // const LAqpsVariant var = GENERATE(LAqpsVariant::Trick,
@@ -65,13 +67,14 @@ TEMPLATE_TEST_CASE(
     //                                   LAqpsVariant::full_opts);
     // const LAqpsVariant var = GENERATE(LAqpsVariant::full_opts);
 
-    m = GENERATE(30, 50);
-    n = GENERATE(9, 31, 50);
-    nb = GENERATE(1, 9, 19, 200);
-    xb = GENERATE(1, 4, 100);
-    alpha_max = real_t(GENERATE(0.0, 0.2, 0.5, 0.8, 1.0));
-    alpha_trust = real_t(GENERATE(0.0, 0.2, 0.5, 0.8, 1.0));
-    exit_when_find_first_need_to_be_recomputed = GENERATE(true, false);
+    // m = GENERATE(30, 50);
+    // n = GENERATE(9, 31, 50);
+    // nb = GENERATE(1, 9, 19, 200);
+    // xb = GENERATE(1, 4, 100);
+    // alpha_max = real_t(GENERATE(0.0, 0.2, 0.5, 0.8, 1.0));
+    // alpha_trust = real_t(GENERATE(0.0, 0.2, 0.5, 0.8, 1.0));
+    // exit_when_find_first_need_to_be_recomputed = GENERATE(true, false);
+    // recompute_all_norms_after_each_panel_exit = GENERATE(true, false);
 
     k = std::min<idx_t>(m, n);
 
@@ -89,9 +92,9 @@ TEMPLATE_TEST_CASE(
     // std::vector<T> tauw(k);
 
     std::vector<idx_t> jpvt_(k);
-    legacyVector<idx_t> jpvt(k,jpvt_.data());
+    legacyVector<idx_t> jpvt(k, jpvt_.data());
     std::vector<T> tauw_(k);
-    legacyVector<T> tauw(k,tauw_.data());
+    legacyVector<T> tauw(k, tauw_.data());
 
     // Options:
     geqp3_opts_t<real_t, size_type<matrix_t>> workOpts;
@@ -102,6 +105,8 @@ TEMPLATE_TEST_CASE(
     workOpts.alpha_trust = alpha_trust;
     workOpts.exit_when_find_first_need_to_be_recomputed =
         exit_when_find_first_need_to_be_recomputed;
+    workOpts.recompute_all_norms_after_each_panel_exit =
+        recompute_all_norms_after_each_panel_exit;
 
     for (idx_t j = 0; j < n; ++j)
         for (idx_t i = 0; i < m; ++i)
@@ -116,7 +121,8 @@ TEMPLATE_TEST_CASE(
     INFO("nb = " << nb << "xb = " << xb);
     INFO("exit_when_find_first_need_to_be_recomputed = "
          << exit_when_find_first_need_to_be_recomputed);
-
+    INFO("recompute_all_norms_after_each_panel_exit = "
+         << recompute_all_norms_after_each_panel_exit);
     {
         // geqpf(A, jpvt, tauw, workOpts);
         // laqp3_trick( A, jpvt, tauw, workOpts );

@@ -62,12 +62,18 @@ struct laqps_full_opts_t {
     bool exit_when_find_first_need_to_be_recomputed =
         true;  ///< Strategy to exit before the block size is achieved
 
+    // Strategy 3 for recomputation:
+    bool recompute_all_norms_after_each_panel_exit =
+        false;  ///< Recompute all norms after each panel exit
+
     // Strategy 2 for recomputation:
     idx_t xb = 11;  ///< Block size for norm recomputation inside the panel
 };
 
 template <class matrix_t, class vector_idx, class vector_t, class vector2_t>
-int laqps_full(vector2_t& fluid_trusted,
+int laqps_full(size_type<matrix_t>& counter_flops,
+               size_type<matrix_t>& counter_io,
+               vector2_t& fluid_trusted,
                size_type<matrix_t>& offset,  // will need to be removed,
                                              // useful for printing purposes
                size_type<matrix_t>& kb,
@@ -86,6 +92,8 @@ int laqps_full(vector2_t& fluid_trusted,
 
     // Functor
     Create<matrix_t> new_matrix;
+
+    // counters for instrumentation
 
     // constants
     const real_t one(1);
@@ -191,6 +199,21 @@ int laqps_full(vector2_t& fluid_trusted,
         auto F1 = slice(F, pair{i, i + 1}, pair{0, i});
         gemm(Op::NoTrans, Op::ConjTrans, -one, A1, F1, one, A2);
 
+        if (verbose) {
+            // instrumentation of the code
+            if ((i < m) && (0 < i)) {
+                idx_t flops = (m - i) * (i) * (1);
+                idx_t io =
+                    (m-i) * (i) + (i) * (1) + (m-i) * (1);
+                counter_flops += flops;
+                counter_io += io;
+                std::cout << "[ counters ] flops = " << flops << std::endl;
+                std::cout << "[ counters ] IO = " << io << std::endl;
+                std::cout << "[ counters ] AI = " << (double)flops / (double)io
+                          << std::endl;
+            }
+        }
+        
         // Generate elementary reflector H(k).
         // Transform A2 into a Householder reflector
         auto v = slice(A, pair{i, m}, i);
@@ -205,6 +228,21 @@ int laqps_full(vector2_t& fluid_trusted,
         auto F2 = slice(F, pair{i + 1, n}, pair{i, i + 1});
         gemm(Op::ConjTrans, Op::NoTrans, tau[i], A3, A2, F2);
 
+        if (verbose) {
+            // instrumentation of the code
+            if ((m > i) && (i + 1 < n)) {
+                idx_t flops = (m - i) * (n - i - 1) * (1);
+                idx_t io =
+                    (m - i) * (n - i - 1) + (m - i) * (1) + (n - i - 1) * (1);
+                counter_flops += flops;
+                counter_io += io;
+                std::cout << "[ counters ] flops = " << flops << std::endl;
+                std::cout << "[ counters ] IO = " << io << std::endl;
+                std::cout << "[ counters ] AI = " << (double)flops / (double)io
+                          << std::endl;
+            }
+        }
+
         // Padding F(1:K,K) with zeros.
         for (idx_t j = 0; j <= i; j++) {
             F(j, i) = zero;
@@ -217,10 +255,37 @@ int laqps_full(vector2_t& fluid_trusted,
         // auxv1 := -tau_i A1^H A2
         auto auxv1 = slice(auxv, pair{0, i}, pair{0, 1});
         gemm(Op::ConjTrans, Op::NoTrans, -tau[i], A1, A2, auxv1);
+        if (verbose) {
+            // instrumentation of the code
+            if (m > i) {
+                idx_t flops = (m - i) * (i) * (1);
+                idx_t io = (m - i) * (i) + (m - i) * (1) + (i) * (1);
+                counter_flops += flops;
+                counter_io += io;
+                std::cout << "[ counters ] flops = " << flops << std::endl;
+                std::cout << "[ counters ] IO = " << io << std::endl;
+                std::cout << "[ counters ] AI = " << (double)flops / (double)io
+                          << std::endl;
+            }
+        }
+
         // F4 := F4 + F3 auxv1
         auto F3 = slice(F, pair{0, n}, pair{0, i});
         auto F4 = slice(F, pair{0, n}, pair{i, i + 1});
         gemm(Op::NoTrans, Op::NoTrans, one, F3, auxv1, one, F4);
+        if (verbose) {
+            // instrumentation of the code
+            if (0 < i) {
+                idx_t flops = (n) * (i) * (1);
+                idx_t io = (n) * (i) + (n) * (1) + (i) * (1);
+                counter_flops += flops;
+                counter_io += io;
+                std::cout << "[ counters ] flops = " << flops << std::endl;
+                std::cout << "[ counters ] IO = " << io << std::endl;
+                std::cout << "[ counters ] AI = " << (double)flops / (double)io
+                          << std::endl;
+            }
+        }
 
         // Update the current row of A: A(RK,K+1:N) := A(RK,K+1:N) - A(RK,1:K) *
         // F(K+1:N,1:K)**H
@@ -229,6 +294,21 @@ int laqps_full(vector2_t& fluid_trusted,
         auto A5 = slice(A, pair{i, i + 1}, pair{i + 1, n});
         auto F5 = slice(F, pair{i + 1, n}, pair{0, i + 1});
         gemm(Op::NoTrans, Op::ConjTrans, -one, A4, F5, one, A5);
+
+        if (verbose) {
+            // instrumentation of the code
+            if (i + 1 < n) {
+                idx_t flops = (1) * (i + 1) * (n - i - 1);
+                idx_t io =
+                    (1) * (i + 1) + (1) * (n - i - 1) + (n - i - 1) * (i + 1);
+                counter_flops += flops;
+                counter_io += io;
+                std::cout << "[ counters ] flops = " << flops << std::endl;
+                std::cout << "[ counters ] IO = " << io << std::endl;
+                std::cout << "[ counters ] AI = " << (double)flops / (double)io
+                          << std::endl;
+            }
+        }
 
         // trusted / non-trusted, and update trusted norms
         for (idx_t j = i + 1; j < n; j++) {
@@ -379,6 +459,27 @@ int laqps_full(vector2_t& fluid_trusted,
                                       pair{0, i + 1});
                     gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilAx);
 
+                    if (verbose) {
+                        // instrumentation of the code
+                        if ((i + 1 < m) && (0 < i + 1) &&
+                            (0 < i_number_of_recompute)) {
+                            idx_t flops =
+                                (m - i - 1) * (i + 1) * (i_number_of_recompute);
+                            idx_t io = (m - i - 1) * (i + 1) +
+                                       (m - i - 1) * (i_number_of_recompute) +
+                                       (i + 1) * (i_number_of_recompute);
+                            counter_flops += flops;
+                            counter_io += io;
+                            std::cout << "[ counters ] flops = " << flops
+                                      << std::endl;
+                            std::cout << "[ counters ] IO = " << io
+                                      << std::endl;
+                            std::cout << "[ counters ] AI = "
+                                      << (double)flops / (double)io
+                                      << std::endl;
+                        }
+                    }
+
                     for (idx_t ixb = 0; ixb < i_number_of_recompute; ixb++) {
                         idx_t jj = location_recompute[ixb];
                         current_norm_estimates[jj] =
@@ -416,9 +517,35 @@ int laqps_full(vector2_t& fluid_trusted,
     auto tilF = slice(F, pair{kb, n}, pair{0, kb});
     gemm(Op::NoTrans, Op::ConjTrans, -one, V, tilF, one, tilA);
 
+    if (verbose) {
+        // instrumentation of the code
+        if ((m - kb) * (n - kb) * kb != 0) {
+            idx_t flops = (m - kb) * (n - kb) * kb;
+            idx_t io = (m - kb) * (n - kb) + kb * (m - kb) + kb * (n - kb);
+            counter_flops += flops;
+            counter_io += io;
+            std::cout << "[ counters ] flops = " << flops << std::endl;
+            std::cout << "[ counters ] IO = " << io << std::endl;
+            std::cout << "[ counters ] AI = " << (double)flops / (double)io
+                      << std::endl;
+        }
+    }
+
+    if (opts.recompute_all_norms_after_each_panel_exit) {
+        number_of_recompute = 0;
+        for (idx_t j = kb; j < n; j++) {
+            need_to_be_recomputed[j] = true;
+            number_of_recompute++;
+            if (verbose) {
+                std::cout << "** at step i = " << offset + i
+                          << ", column j = " << offset + j
+                          << " is to be recomputed\n";
+            }
+        }
+    }
+
     // recomputation outside the panel
-    if (opts.exit_when_find_first_need_to_be_recomputed &&
-        number_of_recompute > 0) {
+    if (number_of_recompute > 0) {
         for (idx_t j = kb; j < n; j++) {
             if (current_norm_estimates[j] != zero) {
                 if (need_to_be_recomputed[j]) {

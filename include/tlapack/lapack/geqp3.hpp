@@ -59,6 +59,10 @@ struct geqp3_opts_t : public workspace_opts_t<> {
     bool exit_when_find_first_need_to_be_recomputed =
         false;  ///< Strategy to exit before the block size is achieved
 
+    // Strategy 3 for recomputation:
+    bool recompute_all_norms_after_each_panel_exit =
+        false;  ///< Recompute all norms after each panel exit
+
     LAqpsVariant variant = LAqpsVariant::full_opts;  ///< Variant for LAQPS
 };
 
@@ -174,6 +178,10 @@ int geqp3(
         fluid_trusted[j] = real_t(1. / tol3z);
     }
 
+    // set counters for instrumentation
+    idx_t counter_flops = 0;
+    idx_t counter_io = 0;
+
     for (idx_t i = 0; i < k;) {
         idx_t ib = std::min<idx_t>(opts.nb, k - i);
 
@@ -200,12 +208,14 @@ int geqp3(
             laqps_full_opts_t<idx_t, real_t> optsQPS;
             optsQPS.alpha_max = opts.alpha_max;
             optsQPS.alpha_trust = opts.alpha_trust;
-            optsQPS.verbose = false;
+            optsQPS.verbose = true;
             optsQPS.exit_when_find_first_need_to_be_recomputed =
                 opts.exit_when_find_first_need_to_be_recomputed;
+            optsQPS.recompute_all_norms_after_each_panel_exit =
+                opts.recompute_all_norms_after_each_panel_exit;
             optsQPS.xb = opts.xb;
-            laqps_full(fluid_trustedk, i, ib, Akk, jpvtk, tauk, partial_normsk,
-                       exact_normsk, optsQPS);
+            laqps_full(counter_flops, counter_io, fluid_trustedk, i, ib, Akk,
+                       jpvtk, tauk, partial_normsk, exact_normsk, optsQPS);
         }
 
         // std::cout << "kb = " << ib << std::endl;
@@ -223,6 +233,16 @@ int geqp3(
         }
         i += ib;
     }
+
+    if (true) {
+        // instrumentation of the code
+        std::cout << "[ counters total ] flops = " << counter_flops
+                  << std::endl;
+        std::cout << "[ counters total ] IO = " << counter_io << std::endl;
+        std::cout << "[ counters total ] AI = "
+                  << (double)counter_flops / (double)counter_io << std::endl;
+    }
+
     return 0;
 }
 
@@ -268,7 +288,7 @@ int geqp3(matrix_t& A, vector_idx& jpvt, vector_t& tau)
     // Store pivots
     using idx_t = type_t<vector_idx>;
     for (idx_t i = 0; i < min(m, n); ++i) {
-        jpvt[i] = (idx_t)piv[i] - 1; // -1 because of Fortran indexing
+        jpvt[i] = (idx_t)piv[i] - 1;  // -1 because of Fortran indexing
 
         // Now, use the new conventions for the pivots
         size_t safety_counter = 0;
